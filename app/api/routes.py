@@ -179,7 +179,7 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
     await _set_profile(redis, profile)
     await redis.set("waf:origin", origin)
     template_path = Path(os.getenv("NGINX_TEMPLATE_PATH", "/app/nginx/nginx.conf.template"))
-    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/nginx.conf"))
+    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
     template = template_path.read_text(encoding="utf-8")
     rendered = (
         template.replace("{{API_KEY}}", api_key)
