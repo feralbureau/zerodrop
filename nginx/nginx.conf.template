@@ -1,6 +1,7 @@
 server {
     listen 8081;
     server_name _;
+    add_header X-WAF-Origin "{{ORIGIN_HOST}}" always;
 
     location = /waf_check {
         internal;
