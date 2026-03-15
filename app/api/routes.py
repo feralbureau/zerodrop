@@ -5,6 +5,7 @@ import os
 import json
 import hashlib
 import logging
+import httpx
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ from starlette.responses import JSONResponse
 from ..core.security.auth import api_key_required
 from ..schemas.waf import WafCheckResponse
 from ..services.waf_service import WAF_LOG_STREAM, check_ip, get_waf_settings
-from ..services.uptime_service import list_monitors, _parse_success_codes
+from ..services.uptime_service import list_monitors, _parse_success_codes, check_and_update
 
 
 class AllowListItem(BaseModel):
@@ -483,8 +484,12 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
         raise HTTPException(status_code=400, detail="url required")
     if check_type not in ("http", "tcp"):
         raise HTTPException(status_code=400, detail="check_type must be http or tcp")
+    normalized_url = url
     parsed = urlparse(url if "://" in url else f"tcp://{url}")
     if check_type == "http":
+        if "://" not in url:
+            normalized_url = f"https://{url}"
+            parsed = urlparse(normalized_url)
         if not parsed.scheme or not parsed.netloc:
             raise HTTPException(status_code=400, detail="url must be valid")
     if check_type == "tcp":
@@ -501,25 +506,18 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
         key,
         mapping={
             "name": name,
-            "url": url,
+            "url": normalized_url,
             "check_type": check_type,
             "success_codes": success_codes if check_type == "http" else "",
             "history": "[]",
         },
     )
     await redis.sadd("uptime:monitors", monitor_id)
-    return JSONResponse(
-        {
-            "monitor": {
-                "id": monitor_id,
-                "name": name,
-                "url": url,
-                "check_type": check_type,
-                "success_codes": success_codes if check_type == "http" else "",
-                "history": [],
-            }
-        }
-    )
+    async with httpx.AsyncClient() as client:
+        await check_and_update(redis, monitor_id, client, app=request.app)
+    monitors = await list_monitors(redis)
+    created = next((item for item in monitors if item["id"] == monitor_id), None)
+    return JSONResponse({"monitor": created})
 
 
 @router.delete("/uptime/{monitor_id}")

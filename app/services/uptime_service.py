@@ -120,6 +120,58 @@ async def _broadcast(app, payload: dict) -> None:
         clients.discard(socket)
 
 
+async def check_and_update(redis: Redis, monitor_id: str, client: httpx.AsyncClient, app=None) -> dict | None:
+    key = f"uptime:monitor:{monitor_id}"
+    data = await redis.hgetall(key)
+    if not data:
+        return None
+    url = _decode(data.get(b"url") or data.get("url"))
+    check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
+    success_raw = _decode(data.get(b"success_codes") or data.get("success_codes"))
+    if not url:
+        return None
+    status = 0
+    normalized_url = url
+    if check_type == "tcp":
+        parsed = urlparse(url if "://" in url else f"tcp://{url}")
+        if not parsed.hostname:
+            return None
+        port = parsed.port or 443
+        status = 1 if await _check_tcp(parsed.hostname, port) else 0
+    else:
+        if "://" not in url:
+            normalized_url = f"https://{url}"
+        parsed = urlparse(normalized_url)
+        if not parsed.scheme or not parsed.netloc:
+            return None
+        try:
+            success_codes = _parse_success_codes(success_raw) or DEFAULT_CODES
+        except ValueError:
+            success_codes = DEFAULT_CODES
+        status = 1 if await _check_http(client, normalized_url, success_codes) else 0
+    history = _parse_history(_decode(data.get(b"history") or data.get("history")))
+    history.append(status)
+    history = history[-HISTORY_LIMIT:]
+    checked_at = int(time.time())
+    updates = {
+        "history": json.dumps(history),
+        "last_status": str(status),
+        "checked_at": str(checked_at),
+    }
+    if normalized_url != url:
+        updates["url"] = normalized_url
+    await redis.hset(key, mapping=updates)
+    payload = {
+        "id": monitor_id,
+        "history": history,
+        "last_status": status,
+        "checked_at": checked_at,
+    }
+    if app is not None:
+        await _broadcast(app, payload)
+    return payload
+
+
 async def run_uptime_loop(app) -> None:
     redis: Redis = app.state.redis
     async with httpx.AsyncClient() as client:
@@ -128,52 +180,7 @@ async def run_uptime_loop(app) -> None:
                 ids = await redis.smembers(UPTIME_SET_KEY)
                 for raw_id in ids:
                     monitor_id = _decode(raw_id)
-                    key = f"uptime:monitor:{monitor_id}"
-                    data = await redis.hgetall(key)
-                    if not data:
-                        continue
-                    url = _decode(data.get(b"url") or data.get("url"))
-                    check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
-                    success_raw = _decode(data.get(b"success_codes") or data.get("success_codes"))
-                    if not url:
-                        continue
-                    status = 0
-                    if check_type == "tcp":
-                        parsed = urlparse(url if "://" in url else f"tcp://{url}")
-                        if not parsed.hostname:
-                            continue
-                        port = parsed.port or 443
-                        status = 1 if await _check_tcp(parsed.hostname, port) else 0
-                    else:
-                        parsed = urlparse(url)
-                        if not parsed.scheme or not parsed.netloc:
-                            continue
-                        try:
-                            success_codes = _parse_success_codes(success_raw) or DEFAULT_CODES
-                        except ValueError:
-                            success_codes = DEFAULT_CODES
-                        status = 1 if await _check_http(client, url, success_codes) else 0
-                    history = _parse_history(_decode(data.get(b"history") or data.get("history")))
-                    history.append(status)
-                    history = history[-HISTORY_LIMIT:]
-                    checked_at = int(time.time())
-                    await redis.hset(
-                        key,
-                        mapping={
-                            "history": json.dumps(history),
-                            "last_status": str(status),
-                            "checked_at": str(checked_at),
-                        },
-                    )
-                    await _broadcast(
-                        app,
-                        {
-                            "id": monitor_id,
-                            "history": history,
-                            "last_status": status,
-                            "checked_at": checked_at,
-                        },
-                    )
+                    await check_and_update(redis, monitor_id, client, app=app)
             except Exception as exc:
                 logger.info("uptime loop error %s", exc)
             await asyncio.sleep(CHECK_INTERVAL)
