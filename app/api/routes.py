@@ -214,6 +214,7 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
     await _set_profile(redis, profile)
     await redis.set("waf:origin", origin)
     rendered = _render_nginx_config(api_key, origin)
+    logger.info("setup origin=%s", origin)
     _write_nginx_config(rendered)
     settings = await get_waf_settings(redis)
     return JSONResponse({"configured": True, "profile": profile, "settings": settings})
@@ -236,6 +237,7 @@ async def update_origin(request: Request, payload: OriginUpdate, _=Depends(api_k
     config_info = None
     if api_key:
         rendered = _render_nginx_config(api_key, origin)
+        logger.info("origin update origin=%s", origin)
         config_info = _write_nginx_config(rendered)
     return JSONResponse({"updated": True, "origin": origin, "config": config_info})
 

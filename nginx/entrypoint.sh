@@ -11,7 +11,7 @@ watch() {
       if [ "$current_sum" != "$last_sum" ]; then
         if [ -e /proc/1/exe ] && readlink /proc/1/exe | grep -q nginx; then
           kill -HUP 1 2>/dev/null || true
-          origin_line="$(grep -m1 "proxy_pass " /shared_nginx/waf.conf | tr -d ';')"
+          origin_line="$(grep "proxy_pass " /shared_nginx/waf.conf | tail -n 1 | tr -d ';')"
           echo "nginx reload applied ${origin_line}"
           last_sum="$current_sum"
         fi
