@@ -149,7 +149,8 @@ export function AppSidebar() {
     if (!timestamp) {
       return "pending"
     }
-    const diff = Math.max(0, Math.floor(now / 1000 - timestamp))
+    const normalized = timestamp > 1_000_000_000_000 ? Math.floor(timestamp / 1000) : timestamp
+    const diff = Math.max(0, Math.floor(now / 1000 - normalized))
     if (diff < 60) {
       return `${diff}s ago`
     }
