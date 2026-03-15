@@ -1,4 +1,5 @@
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 from pathlib import Path
 import os
 import json
@@ -55,6 +56,10 @@ class SetupPayload(BaseModel):
     origin: str
     nickname: str
     avatar_url: str
+
+
+class OriginUpdate(BaseModel):
+    origin: str
 
 
 router = APIRouter()
@@ -137,6 +142,23 @@ async def _get_api_key(redis: Redis) -> str | None:
     return _decode_value(raw)
 
 
+def _render_nginx_config(api_key: str, origin: str) -> str:
+    parsed_origin = urlparse(origin)
+    template_path = Path(os.getenv("NGINX_TEMPLATE_PATH", "/app/nginx/nginx.conf.template"))
+    template = template_path.read_text(encoding="utf-8")
+    return (
+        template.replace("{{API_KEY}}", api_key)
+        .replace("{{ORIGIN_URL}}", origin)
+        .replace("{{ORIGIN_HOST}}", parsed_origin.netloc)
+    )
+
+
+def _write_nginx_config(rendered: str) -> None:
+    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(rendered, encoding="utf-8")
+
+
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
     expected = await _get_api_key(redis)
     if not expected:
@@ -178,18 +200,52 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
     await redis.set("waf:api_key", api_key)
     await _set_profile(redis, profile)
     await redis.set("waf:origin", origin)
-    template_path = Path(os.getenv("NGINX_TEMPLATE_PATH", "/app/nginx/nginx.conf.template"))
-    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
-    template = template_path.read_text(encoding="utf-8")
-    rendered = (
-        template.replace("{{API_KEY}}", api_key)
-        .replace("{{ORIGIN_URL}}", origin)
-        .replace("{{ORIGIN_HOST}}", parsed_origin.netloc)
-    )
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(rendered, encoding="utf-8")
+    rendered = _render_nginx_config(api_key, origin)
+    _write_nginx_config(rendered)
     settings = await get_waf_settings(redis)
     return JSONResponse({"configured": True, "profile": profile, "settings": settings})
+
+
+@router.put("/origin")
+async def update_origin(request: Request, payload: OriginUpdate, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    origin = payload.origin.strip()
+    if not origin:
+        raise HTTPException(status_code=400, detail="origin required")
+    parsed_origin = urlparse(origin)
+    if not parsed_origin.scheme or not parsed_origin.netloc:
+        raise HTTPException(status_code=400, detail="origin must be a valid URL")
+    await redis.set("waf:origin", origin)
+    current = await _get_profile(redis)
+    current["target_site_url"] = origin
+    await _set_profile(redis, current)
+    api_key = await _get_api_key(redis)
+    if api_key:
+        rendered = _render_nginx_config(api_key, origin)
+        _write_nginx_config(rendered)
+    return JSONResponse({"updated": True, "origin": origin})
+
+
+@router.post("/key/regenerate")
+async def regenerate_key(request: Request, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    origin = await redis.get("waf:origin")
+    if not origin:
+        raise HTTPException(status_code=400, detail="origin not configured")
+    origin_value = _decode_value(origin)
+    new_key = str(uuid4())
+    await redis.set("waf:api_key", new_key)
+    rendered = _render_nginx_config(new_key, origin_value)
+    _write_nginx_config(rendered)
+    return JSONResponse({"regenerated": True, "api_key": new_key})
+
+
+@router.post("/reset")
+async def reset_system(request: Request, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    await redis.flushdb()
+    _write_nginx_config("")
+    return JSONResponse({"reset": True})
 
 
 @router.get("/key/validate")

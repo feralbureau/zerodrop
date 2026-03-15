@@ -6,6 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@workspace/ui/components/card"
+import { Input } from "@workspace/ui/components/input"
 import { Separator } from "@workspace/ui/components/separator"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { Switch } from "@workspace/ui/components/switch"
@@ -15,14 +16,35 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
-import { Sparkles } from "lucide-react"
+import { KeyRound, RefreshCw, RotateCcw, Sparkles } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
+import { useAuthedFetch } from "@/hooks/use-authed-fetch"
+import { useApiKey } from "@/hooks/use-api-key"
+import { useProfile } from "@/hooks/use-profile"
 import { useWafSettings, type WafSettingKey } from "@/hooks/use-waf-settings"
+import { getApiBase } from "@/lib/api-base"
 
 export function Settings() {
   const { settings, refresh, updateSetting, updateSettings, isSaving } = useWafSettings()
+  const { profile } = useProfile()
+  const { setApiKey } = useApiKey()
+  const apiFetch = useAuthedFetch()
+  const apiBase = useMemo(() => getApiBase(), [])
+  const [origin, setOrigin] = useState(profile.target_site_url)
+  const [isSavingOrigin, setIsSavingOrigin] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
+  const [generatedKey, setGeneratedKey] = useState("")
 
   const rateLimitEnabled = settings?.rate_limit_enabled ?? false
+
+  useEffect(() => {
+    if (profile.target_site_url) {
+      setOrigin(profile.target_site_url)
+    }
+  }, [profile.target_site_url])
 
   const threatRules = [
     {
@@ -96,6 +118,106 @@ export function Settings() {
           Sync policy
         </Button>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Dashboard settings</CardTitle>
+          <CardDescription>
+            Update origin routing, regenerate the API key, or reset the console.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="origin-url">Origin URL</FieldLabel>
+              <Input
+                id="origin-url"
+                type="url"
+                placeholder="https://origin.example.com"
+                value={origin}
+                onChange={(event) => setOrigin(event.target.value)}
+              />
+              <FieldDescription>
+                Saving will regenerate the nginx config with the new origin.
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const trimmed = origin.trim()
+                if (!trimmed) return
+                setIsSavingOrigin(true)
+                try {
+                  await apiFetch(`${apiBase}/api/origin`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ origin: trimmed }),
+                  })
+                } finally {
+                  setIsSavingOrigin(false)
+                }
+              }}
+              disabled={!origin.trim() || isSavingOrigin}
+            >
+              <RefreshCw data-icon="inline-start" />
+              {isSavingOrigin ? "Saving" : "Save origin"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setIsRegenerating(true)
+                try {
+                  const res = await apiFetch(`${apiBase}/api/key/regenerate`, {
+                    method: "POST",
+                  })
+                  const data = await res.json()
+                  if (data?.api_key) {
+                    setGeneratedKey(data.api_key)
+                    setApiKey(data.api_key)
+                  }
+                } finally {
+                  setIsRegenerating(false)
+                }
+              }}
+              disabled={isRegenerating}
+            >
+              <KeyRound data-icon="inline-start" />
+              {isRegenerating ? "Regenerating" : "Regenerate key"}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                setIsResetting(true)
+                try {
+                  await apiFetch(`${apiBase}/api/reset`, { method: "POST" })
+                  setApiKey("")
+                  window.location.reload()
+                } finally {
+                  setIsResetting(false)
+                }
+              }}
+              disabled={isResetting}
+            >
+              <RotateCcw data-icon="inline-start" />
+              {isResetting ? "Resetting" : "Full reset"}
+            </Button>
+          </div>
+          {generatedKey ? (
+            <div className="flex flex-col gap-2">
+              <FieldLabel htmlFor="new-key">New API key</FieldLabel>
+              <Input id="new-key" value={generatedKey} readOnly />
+              <FieldDescription>
+                Save this key; it has already been applied to nginx.
+              </FieldDescription>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -85,7 +85,6 @@ export function AppSidebar() {
   const [profileOpen, setProfileOpen] = useState(false)
   const [nickname, setNickname] = useState(profile.nickname)
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url)
-  const [targetSiteUrl, setTargetSiteUrl] = useState(profile.target_site_url)
   const initials = useMemo(() => {
     const parts = (nickname || profile.nickname).trim().split(/\s+/).filter(Boolean)
     return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "HK"
@@ -96,7 +95,6 @@ export function AppSidebar() {
     if (open) {
       setNickname(profile.nickname)
       setAvatarUrl(profile.avatar_url)
-      setTargetSiteUrl(profile.target_site_url)
     }
   }
 
@@ -314,7 +312,7 @@ export function AppSidebar() {
                 </DropdownMenuItem>
                 <DropdownMenuItem>
                   <Settings2 data-icon="inline-start" />
-                  Account settings
+                  Dashboard settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -369,11 +367,6 @@ export function AppSidebar() {
                 value={nickname}
                 onChange={(event) => setNickname(event.target.value)}
               />
-              <Input
-                placeholder="Target site URL"
-                value={targetSiteUrl}
-                onChange={(event) => setTargetSiteUrl(event.target.value)}
-              />
               <div className="flex justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => setProfileOpen(false)}>
                   Cancel
@@ -384,7 +377,6 @@ export function AppSidebar() {
                     await updateProfile({
                       nickname,
                       avatar_url: avatarUrl,
-                      target_site_url: targetSiteUrl,
                     })
                     setProfileOpen(false)
                   }}
