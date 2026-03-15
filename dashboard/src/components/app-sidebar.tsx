@@ -50,6 +50,8 @@ import { useWafLogs } from "@/hooks/use-waf-logs"
 import { useAllowlist } from "@/hooks/use-allowlist"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useProfile } from "@/hooks/use-profile"
+import { useUptime } from "@/hooks/use-uptime"
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
 
 const navigation = [
   {
@@ -81,10 +83,15 @@ export function AppSidebar() {
   const { allowlist } = useAllowlist()
   const { settings } = useWafSettings()
   const { profile, updateProfile, isSaving } = useProfile()
+  const { monitors, addMonitor } = useUptime()
   const { setApiKey } = useApiKey()
   const [profileOpen, setProfileOpen] = useState(false)
   const [nickname, setNickname] = useState(profile.nickname)
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url)
+  const [uptimeOpen, setUptimeOpen] = useState(false)
+  const [uptimeName, setUptimeName] = useState("")
+  const [uptimeUrl, setUptimeUrl] = useState("")
+  const [uptimeSaving, setUptimeSaving] = useState(false)
   const initials = useMemo(() => {
     const parts = (nickname || profile.nickname).trim().split(/\s+/).filter(Boolean)
     return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "HK"
@@ -95,6 +102,14 @@ export function AppSidebar() {
     if (open) {
       setNickname(profile.nickname)
       setAvatarUrl(profile.avatar_url)
+    }
+  }
+
+  const handleUptimeOpen = (open: boolean) => {
+    setUptimeOpen(open)
+    if (!open) {
+      setUptimeName("")
+      setUptimeUrl("")
     }
   }
 
@@ -122,6 +137,32 @@ export function AppSidebar() {
       : coverage >= 50
         ? "bg-[color:var(--warning)]"
         : "bg-destructive"
+
+  const formatChecked = (timestamp?: number | null) => {
+    if (!timestamp) {
+      return "pending"
+    }
+    const diff = Math.max(0, Math.floor(Date.now() / 1000 - timestamp))
+    if (diff < 60) {
+      return `${diff}s ago`
+    }
+    const mins = Math.floor(diff / 60)
+    if (mins < 60) {
+      return `${mins}m ago`
+    }
+    const hours = Math.floor(mins / 60)
+    return `${hours}h ago`
+  }
+
+  const normalizeHistory = (history: number[] = []) => {
+    const trimmed = history.slice(-20)
+    if (trimmed.length >= 20) {
+      return trimmed
+    }
+    return [...Array(20 - trimmed.length).fill(null), ...trimmed] as Array<
+      number | null
+    >
+  }
 
   return (
     <Sidebar>
@@ -166,95 +207,51 @@ export function AppSidebar() {
           <SidebarGroupLabel>Uptime</SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="flex flex-col gap-3">
-              <div className="rounded-lg border bg-background/60 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">Production</span>
-                  <Badge variant="secondary">Live</Badge>
-                </div>
-                <div className="mt-2 grid grid-cols-20 gap-1">
-                  {[
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "warn",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                  ].map((status, index) => (
-                    <span
-                      key={`prod-${index}`}
-                      className={cn(
-                        "h-3 w-full rounded-full",
-                        status === "good" && "bg-[color:var(--chart-2)]",
-                        status === "warn" && "bg-[color:var(--chart-5)]"
-                      )}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>99.98%</span>
-                  <span>24h</span>
-                </div>
-              </div>
-              <div className="rounded-lg border bg-background/60 p-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">Development</span>
-                  <Badge variant="outline">Idle</Badge>
-                </div>
-                <div className="mt-2 grid grid-cols-20 gap-1">
-                  {[
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "warn",
-                    "warn",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "warn",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                    "good",
-                  ].map((status, index) => (
-                    <span
-                      key={`dev-${index}`}
-                      className={cn(
-                        "h-3 w-full rounded-full",
-                        status === "good" && "bg-[color:var(--chart-2)]",
-                        status === "warn" && "bg-[color:var(--chart-5)]"
-                      )}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>99.65%</span>
-                  <span>24h</span>
-                </div>
-              </div>
-              <div className="rounded-lg border border-dashed bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+              {monitors.map((monitor) => {
+                const history = normalizeHistory(monitor.history)
+                const valid = history.filter((entry): entry is number => entry !== null)
+                const upCount = valid.filter((entry) => entry === 1).length
+                const percent = valid.length ? Math.round((upCount / valid.length) * 100) : 0
+                const status = monitor.last_status
+                return (
+                  <div key={monitor.id} className="rounded-lg border bg-background/60 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium truncate">{monitor.name}</span>
+                      <Badge
+                        variant={
+                          status === 1 ? "secondary" : status === 0 ? "destructive" : "outline"
+                        }
+                      >
+                        {status === 1 ? "Live" : status === 0 ? "Down" : "Pending"}
+                      </Badge>
+                    </div>
+                    <div className="mt-2 grid grid-cols-20 gap-1">
+                      {history.map((entry, index) => (
+                        <span
+                          key={`${monitor.id}-${index}`}
+                          className={cn(
+                            "h-3 w-full rounded-full",
+                            entry === 1 && "bg-[color:var(--chart-2)]",
+                            entry === 0 && "bg-destructive",
+                            entry === null && "bg-muted/50"
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{valid.length ? `${percent}%` : "waiting"}</span>
+                      <span>{formatChecked(monitor.checked_at)}</span>
+                    </div>
+                  </div>
+                )
+              })}
+              <Button
+                variant={monitors.length ? "outline" : "secondary"}
+                size="sm"
+                onClick={() => setUptimeOpen(true)}
+              >
                 Add more
-              </div>
+              </Button>
             </div>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -385,6 +382,61 @@ export function AppSidebar() {
                   {isSaving ? "Saving" : "Save"}
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={uptimeOpen} onOpenChange={handleUptimeOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Add uptime monitor</DialogTitle>
+            </DialogHeader>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="uptime-name">Name</FieldLabel>
+                <Input
+                  id="uptime-name"
+                  placeholder="Production"
+                  value={uptimeName}
+                  onChange={(event) => setUptimeName(event.target.value)}
+                />
+                <FieldDescription>Short label for the uptime card.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="uptime-url">URL</FieldLabel>
+                <Input
+                  id="uptime-url"
+                  type="url"
+                  placeholder="https://example.com"
+                  value={uptimeUrl}
+                  onChange={(event) => setUptimeUrl(event.target.value)}
+                />
+                <FieldDescription>We will ping this endpoint every 30s.</FieldDescription>
+              </Field>
+            </FieldGroup>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleUptimeOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!uptimeName.trim() || !uptimeUrl.trim() || uptimeSaving}
+                onClick={async () => {
+                  setUptimeSaving(true)
+                  try {
+                    const created = await addMonitor({
+                      name: uptimeName.trim(),
+                      url: uptimeUrl.trim(),
+                    })
+                    if (created) {
+                      handleUptimeOpen(false)
+                    }
+                  } finally {
+                    setUptimeSaving(false)
+                  }
+                }}
+              >
+                {uptimeSaving ? "Adding" : "Add monitor"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

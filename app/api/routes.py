@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from ..core.security.auth import api_key_required
 from ..schemas.waf import WafCheckResponse
 from ..services.waf_service import WAF_LOG_STREAM, check_ip, get_waf_settings
+from ..services.uptime_service import list_monitors
 
 
 class AllowListItem(BaseModel):
@@ -62,6 +63,11 @@ class SetupPayload(BaseModel):
 
 class OriginUpdate(BaseModel):
     origin: str
+
+
+class UptimeCreate(BaseModel):
+    name: str
+    url: str
 
 
 router = APIRouter()
@@ -455,6 +461,47 @@ async def update_settings(request: Request, update: SettingsUpdate, _=Depends(ap
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/uptime")
+async def get_uptime(request: Request, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    monitors = await list_monitors(redis)
+    return JSONResponse({"monitors": monitors})
+
+
+@router.post("/uptime")
+async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    name = payload.name.strip()
+    url = payload.url.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="url must be valid")
+    monitor_id = str(uuid4())
+    key = f"uptime:monitor:{monitor_id}"
+    await redis.hset(
+        key,
+        mapping={
+            "name": name,
+            "url": url,
+            "history": "[]",
+        },
+    )
+    await redis.sadd("uptime:monitors", monitor_id)
+    return JSONResponse({"monitor": {"id": monitor_id, "name": name, "url": url, "history": []}})
+
+
+@router.delete("/uptime/{monitor_id}")
+async def delete_uptime(request: Request, monitor_id: str, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    await redis.srem("uptime:monitors", monitor_id)
+    await redis.delete(f"uptime:monitor:{monitor_id}")
+    return JSONResponse({"deleted": True, "id": monitor_id})
+
+
 @router.websocket("/ws/logs")
 async def stream_logs(socket: WebSocket) -> None:
     await socket.accept()
@@ -487,6 +534,30 @@ async def stream_logs(socket: WebSocket) -> None:
             await socket.close(code=1011)
         except Exception:
             return
+
+
+@router.websocket("/ws/uptime")
+async def stream_uptime(socket: WebSocket) -> None:
+    await socket.accept()
+    redis: Redis = socket.app.state.redis
+    if not await _is_ws_authorized(socket, redis):
+        await socket.close(code=1008)
+        return
+    clients = socket.app.state.uptime_clients
+    clients.add(socket)
+    try:
+        await socket.send_json({"type": "snapshot", "monitors": await list_monitors(redis)})
+        while True:
+            await socket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        try:
+            await socket.close(code=1011)
+        except Exception:
+            pass
+    finally:
+        clients.discard(socket)
 
 
 @router.post("/allowlist")

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import contextlib
 import asyncio
 from typing import AsyncGenerator
 import logging
@@ -11,6 +12,7 @@ from starlette.responses import JSONResponse
 from .core.config import settings
 from .core.redis import create_redis_client, close_redis_client
 from redis.asyncio.client import Redis
+from .services.uptime_service import run_uptime_loop
 
 
 @asynccontextmanager
@@ -37,9 +39,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 		await close_redis_client(app.state.redis)
 		raise
 
+	app.state.uptime_clients = set()
+	app.state.uptime_task = asyncio.create_task(run_uptime_loop(app))
+
 	try:
 		yield
 	finally:
+		uptime_task = getattr(app.state, "uptime_task", None)
+		if uptime_task:
+			uptime_task.cancel()
+			with contextlib.suppress(Exception):
+				await uptime_task
 		await close_redis_client(app.state.redis)
 
 
