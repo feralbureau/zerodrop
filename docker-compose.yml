@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - NGINX_TEMPLATE_PATH=/app/nginx/nginx.conf.template
+      - NGINX_OUTPUT_PATH=/shared_nginx/nginx.conf
+    depends_on:
+      - redis
+    volumes:
+      - shared-nginx:/shared_nginx
+    # do not publish ports for api; only nginx can access it internally
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  nginx:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    restart: unless-stopped
+    container_name: zerodrop-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    command: ["nginx", "-g", "daemon off;", "-c", "/shared_nginx/nginx.conf"]
+    volumes:
+      - shared-nginx:/shared_nginx:ro
+
+  nginx_watcher:
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    volumes:
+      - shared-nginx:/shared_nginx:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache inotify-tools docker-cli >/dev/null
+        while true; do
+          inotifywait -e close_write,move,create /shared_nginx/nginx.conf >/dev/null 2>&1
+          docker exec zerodrop-nginx nginx -s reload >/dev/null 2>&1
+        done
+
+volumes:
+  redis-data:
+  shared-nginx:
