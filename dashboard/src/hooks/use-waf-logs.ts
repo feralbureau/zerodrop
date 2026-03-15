@@ -94,11 +94,9 @@ export function useWafLogs(): UseWafLogsResult {
       }
       const data = await res.json()
       const logs = Array.isArray(data.logs) ? data.logs : []
-      const parsed = logs
-        .map((entry: { id: string; fields: unknown }) =>
-          parseLogEntry(entry.id, normalizeFields(entry.fields))
-        )
-        .filter((event): event is WafLogEvent => !!event)
+      const parsed = (logs as Array<{ id: string; fields: unknown }>)
+        .map((entry) => parseLogEntry(entry.id, normalizeFields(entry.fields)))
+        .filter((event: WafLogEvent | null): event is WafLogEvent => Boolean(event))
       if (mountedRef.current) {
         setEvents((prev) => mergeEvents(prev, parsed))
         setLastRefresh(Date.now())
