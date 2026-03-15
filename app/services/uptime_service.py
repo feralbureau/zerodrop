@@ -140,9 +140,10 @@ async def run_uptime_loop(app) -> None:
                     status = 0
                     if check_type == "tcp":
                         parsed = urlparse(url if "://" in url else f"tcp://{url}")
-                        if not parsed.hostname or not parsed.port:
+                        if not parsed.hostname:
                             continue
-                        status = 1 if await _check_tcp(parsed.hostname, parsed.port) else 0
+                        port = parsed.port or 443
+                        status = 1 if await _check_tcp(parsed.hostname, port) else 0
                     else:
                         parsed = urlparse(url)
                         if not parsed.scheme or not parsed.netloc:

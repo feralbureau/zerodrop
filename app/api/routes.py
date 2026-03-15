@@ -488,8 +488,8 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
         if not parsed.scheme or not parsed.netloc:
             raise HTTPException(status_code=400, detail="url must be valid")
     if check_type == "tcp":
-        if not parsed.hostname or not parsed.port:
-            raise HTTPException(status_code=400, detail="tcp url must include host:port")
+        if not parsed.hostname:
+            raise HTTPException(status_code=400, detail="tcp url must include host")
     if check_type == "http" and success_codes:
         try:
             _parse_success_codes(success_codes)
