@@ -30,7 +30,7 @@ services:
     container_name: zerodrop-nginx
     depends_on:
       - api
-    command: ["nginx", "-g", "daemon off;", "-c", "/shared_nginx/nginx.conf"]
+    command: ["/bin/sh", "-c", "if [ ! -f /shared_nginx/nginx.conf ]; then cp /etc/nginx/nginx.bootstrap.conf /shared_nginx/nginx.conf; fi; nginx -g 'daemon off;' -c /shared_nginx/nginx.conf"]
     volumes:
       - shared-nginx:/shared_nginx:ro
 
