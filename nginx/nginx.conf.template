@@ -20,7 +20,7 @@ server {
         auth_request /waf_check;
         error_page 403 = @waf_blocked;
         proxy_pass {{ORIGIN_URL}};
-        proxy_set_header Host $host;
+        proxy_set_header Host {{ORIGIN_HOST}};
         proxy_set_header X-Forwarded-Host $host;
         proxy_ssl_server_name on;
         proxy_ssl_name {{ORIGIN_HOST}};
