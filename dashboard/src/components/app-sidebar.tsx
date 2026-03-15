@@ -310,7 +310,7 @@ export function AppSidebar() {
                   <User data-icon="inline-start" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/settings")}>
                   <Settings2 data-icon="inline-start" />
                   Dashboard settings
                 </DropdownMenuItem>
