@@ -83,6 +83,7 @@ _SKIP_HEADER_NAMES = {
     "connection",
     "pragma",
     "cache-control",
+    "cdn-loop",
 }
 
 SETTINGS_KEY = "waf:settings"
