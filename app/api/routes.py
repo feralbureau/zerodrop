@@ -3,6 +3,8 @@ from uuid import uuid4
 from pathlib import Path
 import os
 import json
+import hashlib
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
@@ -63,6 +65,7 @@ class OriginUpdate(BaseModel):
 
 
 router = APIRouter()
+logger = logging.getLogger("waf.nginx")
 
 
 def _decode_value(value) -> str:
@@ -153,10 +156,20 @@ def _render_nginx_config(api_key: str, origin: str) -> str:
     )
 
 
-def _write_nginx_config(rendered: str) -> None:
+def _write_nginx_config(rendered: str) -> dict:
     output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
+    stat = output_path.stat()
+    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
+    logger.info(
+        "nginx config updated path=%s size=%s mtime=%s sha256=%s",
+        output_path,
+        stat.st_size,
+        stat.st_mtime,
+        digest,
+    )
+    return {"path": str(output_path), "size": stat.st_size, "mtime": stat.st_mtime, "sha256": digest}
 
 
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
@@ -220,10 +233,11 @@ async def update_origin(request: Request, payload: OriginUpdate, _=Depends(api_k
     current["target_site_url"] = origin
     await _set_profile(redis, current)
     api_key = await _get_api_key(redis)
+    config_info = None
     if api_key:
         rendered = _render_nginx_config(api_key, origin)
-        _write_nginx_config(rendered)
-    return JSONResponse({"updated": True, "origin": origin})
+        config_info = _write_nginx_config(rendered)
+    return JSONResponse({"updated": True, "origin": origin, "config": config_info})
 
 
 @router.post("/key/regenerate")
@@ -246,6 +260,26 @@ async def reset_system(request: Request, _=Depends(api_key_required)) -> JSONRes
     await redis.flushdb()
     _write_nginx_config("")
     return JSONResponse({"reset": True})
+
+
+@router.get("/nginx/config")
+async def get_nginx_config(request: Request, _=Depends(api_key_required)) -> JSONResponse:
+    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
+    if not output_path.exists():
+        return JSONResponse({"exists": False, "path": str(output_path)})
+    content = output_path.read_text(encoding="utf-8")
+    stat = output_path.stat()
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return JSONResponse(
+        {
+            "exists": True,
+            "path": str(output_path),
+            "size": stat.st_size,
+            "mtime": stat.st_mtime,
+            "sha256": digest,
+            "config": content,
+        }
+    )
 
 
 @router.get("/key/validate")
