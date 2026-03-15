@@ -8,6 +8,8 @@ export type UptimeMonitor = {
   id: string
   name: string
   url: string
+  check_type?: string
+  success_codes?: string
   history: number[]
   last_status?: number | null
   checked_at?: number | null
@@ -93,7 +95,12 @@ export function useUptime() {
     }
   }, [apiBase, apiKey])
 
-  const addMonitor = async (payload: { name: string; url: string }) => {
+  const addMonitor = async (payload: {
+    name: string
+    url: string
+    check_type?: string
+    success_codes?: string
+  }) => {
     const res = await apiFetch(`${apiBase}/api/uptime`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

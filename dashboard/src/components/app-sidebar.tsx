@@ -31,6 +31,7 @@ import {
 } from "@workspace/ui/components/dialog"
 import { Input } from "@workspace/ui/components/input"
 import { Progress } from "@workspace/ui/components/progress"
+import { ToggleGroup, ToggleGroupItem } from "@workspace/ui/components/toggle-group"
 import { cn } from "@workspace/ui/lib/utils"
 import {
   ChevronDown,
@@ -40,9 +41,10 @@ import {
   Settings2,
   ShieldAlert,
   ShieldCheck,
+  Trash2,
   User,
 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { useWafSettings } from "@/hooks/use-waf-settings"
@@ -83,7 +85,7 @@ export function AppSidebar() {
   const { allowlist } = useAllowlist()
   const { settings } = useWafSettings()
   const { profile, updateProfile, isSaving } = useProfile()
-  const { monitors, addMonitor } = useUptime()
+  const { monitors, addMonitor, removeMonitor } = useUptime()
   const { setApiKey } = useApiKey()
   const [profileOpen, setProfileOpen] = useState(false)
   const [nickname, setNickname] = useState(profile.nickname)
@@ -91,7 +93,10 @@ export function AppSidebar() {
   const [uptimeOpen, setUptimeOpen] = useState(false)
   const [uptimeName, setUptimeName] = useState("")
   const [uptimeUrl, setUptimeUrl] = useState("")
+  const [uptimeType, setUptimeType] = useState("http")
+  const [uptimeCodes, setUptimeCodes] = useState("200-399")
   const [uptimeSaving, setUptimeSaving] = useState(false)
+  const [now, setNow] = useState(Date.now())
   const initials = useMemo(() => {
     const parts = (nickname || profile.nickname).trim().split(/\s+/).filter(Boolean)
     return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "HK"
@@ -110,6 +115,8 @@ export function AppSidebar() {
     if (!open) {
       setUptimeName("")
       setUptimeUrl("")
+      setUptimeType("http")
+      setUptimeCodes("200-399")
     }
   }
 
@@ -142,7 +149,7 @@ export function AppSidebar() {
     if (!timestamp) {
       return "pending"
     }
-    const diff = Math.max(0, Math.floor(Date.now() / 1000 - timestamp))
+    const diff = Math.max(0, Math.floor(now / 1000 - timestamp))
     if (diff < 60) {
       return `${diff}s ago`
     }
@@ -163,6 +170,11 @@ export function AppSidebar() {
       number | null
     >
   }
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
 
   return (
     <Sidebar>
@@ -217,13 +229,22 @@ export function AppSidebar() {
                   <div key={monitor.id} className="rounded-lg border bg-background/60 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-medium truncate">{monitor.name}</span>
-                      <Badge
-                        variant={
-                          status === 1 ? "secondary" : status === 0 ? "destructive" : "outline"
-                        }
-                      >
-                        {status === 1 ? "Live" : status === 0 ? "Down" : "Pending"}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant={
+                            status === 1 ? "secondary" : status === 0 ? "destructive" : "outline"
+                          }
+                        >
+                          {status === 1 ? "Live" : status === 0 ? "Down" : "Pending"}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeMonitor(monitor.id)}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
                     </div>
                     <div className="mt-2 grid grid-cols-20 gap-1">
                       {history.map((entry, index) => (
@@ -246,8 +267,9 @@ export function AppSidebar() {
                 )
               })}
               <Button
-                variant={monitors.length ? "outline" : "secondary"}
+                variant="outline"
                 size="sm"
+                className="border-dashed bg-background/40 text-muted-foreground"
                 onClick={() => setUptimeOpen(true)}
               >
                 Add more
@@ -402,16 +424,48 @@ export function AppSidebar() {
                 <FieldDescription>Short label for the uptime card.</FieldDescription>
               </Field>
               <Field>
+                <FieldLabel>Check type</FieldLabel>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={uptimeType}
+                  onValueChange={(value) => {
+                    if (value) {
+                      setUptimeType(value)
+                    }
+                  }}
+                >
+                  <ToggleGroupItem value="http">HTTP</ToggleGroupItem>
+                  <ToggleGroupItem value="tcp">Ping</ToggleGroupItem>
+                </ToggleGroup>
+                <FieldDescription>
+                  HTTP uses status codes. Ping checks TCP connectivity.
+                </FieldDescription>
+              </Field>
+              <Field>
                 <FieldLabel htmlFor="uptime-url">URL</FieldLabel>
                 <Input
                   id="uptime-url"
                   type="url"
-                  placeholder="https://example.com"
+                  placeholder={uptimeType === "tcp" ? "example.com:443" : "https://example.com"}
                   value={uptimeUrl}
                   onChange={(event) => setUptimeUrl(event.target.value)}
                 />
-                <FieldDescription>We will ping this endpoint every 30s.</FieldDescription>
+                <FieldDescription>We will check this endpoint every 30s.</FieldDescription>
               </Field>
+              {uptimeType === "http" ? (
+                <Field>
+                  <FieldLabel htmlFor="uptime-codes">Success codes</FieldLabel>
+                  <Input
+                    id="uptime-codes"
+                    placeholder="200-399"
+                    value={uptimeCodes}
+                    onChange={(event) => setUptimeCodes(event.target.value)}
+                  />
+                  <FieldDescription>Comma or range list, e.g. 200,204,301-399.</FieldDescription>
+                </Field>
+              ) : null}
             </FieldGroup>
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" onClick={() => handleUptimeOpen(false)}>
@@ -426,6 +480,8 @@ export function AppSidebar() {
                     const created = await addMonitor({
                       name: uptimeName.trim(),
                       url: uptimeUrl.trim(),
+                      check_type: uptimeType,
+                      success_codes: uptimeType === "http" ? uptimeCodes.trim() : undefined,
                     })
                     if (created) {
                       handleUptimeOpen(false)

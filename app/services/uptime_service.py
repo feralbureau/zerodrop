@@ -10,6 +10,7 @@ from redis.asyncio.client import Redis
 UPTIME_SET_KEY = "uptime:monitors"
 HISTORY_LIMIT = 20
 CHECK_INTERVAL = 30
+DEFAULT_CODES = set(range(200, 400))
 
 logger = logging.getLogger("waf.uptime")
 
@@ -34,6 +35,30 @@ def _parse_history(raw: str) -> list[int]:
     return []
 
 
+def _parse_success_codes(raw: str) -> set[int]:
+    if not raw:
+        return set()
+    items = [item.strip() for item in raw.split(",") if item.strip()]
+    if not items:
+        return set()
+    codes: set[int] = set()
+    for item in items:
+        if "-" in item:
+            start_raw, end_raw = item.split("-", 1)
+            start = int(start_raw.strip())
+            end = int(end_raw.strip())
+            if start > end:
+                raise ValueError("invalid status range")
+            for code in range(start, end + 1):
+                codes.add(code)
+            continue
+        codes.add(int(item))
+    for code in codes:
+        if code < 100 or code > 599:
+            raise ValueError("invalid status code")
+    return codes
+
+
 async def list_monitors(redis: Redis) -> list[dict]:
     items: list[dict] = []
     ids = await redis.smembers(UPTIME_SET_KEY)
@@ -45,6 +70,8 @@ async def list_monitors(redis: Redis) -> list[dict]:
             continue
         name = _decode(data.get(b"name") or data.get("name"))
         url = _decode(data.get(b"url") or data.get("url"))
+        check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
+        success_codes = _decode(data.get(b"success_codes") or data.get("success_codes"))
         history = _parse_history(_decode(data.get(b"history") or data.get("history")))
         last_status = _decode(data.get(b"last_status") or data.get("last_status"))
         checked_at = _decode(data.get(b"checked_at") or data.get("checked_at"))
@@ -53,6 +80,8 @@ async def list_monitors(redis: Redis) -> list[dict]:
                 "id": monitor_id,
                 "name": name,
                 "url": url,
+                "check_type": check_type,
+                "success_codes": success_codes,
                 "history": history,
                 "last_status": int(last_status) if last_status else None,
                 "checked_at": int(checked_at) if checked_at else None,
@@ -61,10 +90,18 @@ async def list_monitors(redis: Redis) -> list[dict]:
     return items
 
 
-async def _check_url(client: httpx.AsyncClient, url: str) -> bool:
+async def _check_http(client: httpx.AsyncClient, url: str, success_codes: set[int]) -> bool:
     try:
         resp = await client.get(url, timeout=6.0, follow_redirects=True)
-        return resp.status_code < 500
+        return resp.status_code in success_codes
+    except Exception:
+        return False
+
+
+async def _check_tcp(host: str, port: int) -> bool:
+    try:
+        await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3.5)
+        return True
     except Exception:
         return False
 
@@ -96,12 +133,25 @@ async def run_uptime_loop(app) -> None:
                     if not data:
                         continue
                     url = _decode(data.get(b"url") or data.get("url"))
+                    check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
+                    success_raw = _decode(data.get(b"success_codes") or data.get("success_codes"))
                     if not url:
                         continue
-                    parsed = urlparse(url)
-                    if not parsed.scheme or not parsed.netloc:
-                        continue
-                    status = 1 if await _check_url(client, url) else 0
+                    status = 0
+                    if check_type == "tcp":
+                        parsed = urlparse(url if "://" in url else f"tcp://{url}")
+                        if not parsed.hostname or not parsed.port:
+                            continue
+                        status = 1 if await _check_tcp(parsed.hostname, parsed.port) else 0
+                    else:
+                        parsed = urlparse(url)
+                        if not parsed.scheme or not parsed.netloc:
+                            continue
+                        try:
+                            success_codes = _parse_success_codes(success_raw) or DEFAULT_CODES
+                        except ValueError:
+                            success_codes = DEFAULT_CODES
+                        status = 1 if await _check_http(client, url, success_codes) else 0
                     history = _parse_history(_decode(data.get(b"history") or data.get("history")))
                     history.append(status)
                     history = history[-HISTORY_LIMIT:]

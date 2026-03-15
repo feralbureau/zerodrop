@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 from ..core.security.auth import api_key_required
 from ..schemas.waf import WafCheckResponse
 from ..services.waf_service import WAF_LOG_STREAM, check_ip, get_waf_settings
-from ..services.uptime_service import list_monitors
+from ..services.uptime_service import list_monitors, _parse_success_codes
 
 
 class AllowListItem(BaseModel):
@@ -68,6 +68,8 @@ class OriginUpdate(BaseModel):
 class UptimeCreate(BaseModel):
     name: str
     url: str
+    check_type: str | None = None
+    success_codes: str | None = None
 
 
 router = APIRouter()
@@ -473,13 +475,26 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
     redis: Redis = request.app.state.redis
     name = payload.name.strip()
     url = payload.url.strip()
+    check_type = (payload.check_type or "http").strip().lower()
+    success_codes = (payload.success_codes or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="name required")
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    parsed = urlparse(url)
-    if not parsed.scheme or not parsed.netloc:
-        raise HTTPException(status_code=400, detail="url must be valid")
+    if check_type not in ("http", "tcp"):
+        raise HTTPException(status_code=400, detail="check_type must be http or tcp")
+    parsed = urlparse(url if "://" in url else f"tcp://{url}")
+    if check_type == "http":
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=400, detail="url must be valid")
+    if check_type == "tcp":
+        if not parsed.hostname or not parsed.port:
+            raise HTTPException(status_code=400, detail="tcp url must include host:port")
+    if check_type == "http" and success_codes:
+        try:
+            _parse_success_codes(success_codes)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="invalid success codes")
     monitor_id = str(uuid4())
     key = f"uptime:monitor:{monitor_id}"
     await redis.hset(
@@ -487,11 +502,24 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
         mapping={
             "name": name,
             "url": url,
+            "check_type": check_type,
+            "success_codes": success_codes if check_type == "http" else "",
             "history": "[]",
         },
     )
     await redis.sadd("uptime:monitors", monitor_id)
-    return JSONResponse({"monitor": {"id": monitor_id, "name": name, "url": url, "history": []}})
+    return JSONResponse(
+        {
+            "monitor": {
+                "id": monitor_id,
+                "name": name,
+                "url": url,
+                "check_type": check_type,
+                "success_codes": success_codes if check_type == "http" else "",
+                "history": [],
+            }
+        }
+    )
 
 
 @router.delete("/uptime/{monitor_id}")
