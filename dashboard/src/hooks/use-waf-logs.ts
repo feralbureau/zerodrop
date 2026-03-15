@@ -151,7 +151,7 @@ export function useWafLogs(): UseWafLogsResult {
       setError("websocket error")
     }
 
-    ws.onmessage = (event) => {
+    ws.onmessage = (event: MessageEvent) => {
       try {
         const payload = JSON.parse(event.data) as WafLogEvent
         const ts = Number(payload.ts)
