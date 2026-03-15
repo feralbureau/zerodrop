@@ -11,9 +11,12 @@ RUN npm run build
 FROM nginx:alpine
 
 COPY nginx/nginx.base.conf /etc/nginx/nginx.conf
+COPY nginx/entrypoint.sh /entrypoint.sh
 COPY --from=build /app/dist /usr/share/nginx/html
+
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
 EXPOSE 8081
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]

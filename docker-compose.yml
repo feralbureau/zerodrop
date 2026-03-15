@@ -30,26 +30,8 @@ services:
     container_name: zerodrop-nginx
     depends_on:
       - api
-    command: ["/bin/sh", "-c", "touch /shared_nginx/waf.conf; nginx -g 'daemon off;' -c /etc/nginx/nginx.conf"]
     volumes:
       - shared-nginx:/shared_nginx
-
-  nginx_watcher:
-    image: alpine:3.20
-    restart: unless-stopped
-    depends_on:
-      - nginx
-    volumes:
-      - shared-nginx:/shared_nginx:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - |
-        apk add --no-cache inotify-tools docker-cli >/dev/null
-        while true; do
-          inotifywait -e close_write,move,create /shared_nginx/waf.conf >/dev/null 2>&1
-          docker exec zerodrop-nginx nginx -s reload >/dev/null 2>&1
-        done
 
 volumes:
   redis-data:
