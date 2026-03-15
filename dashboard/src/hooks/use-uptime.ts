@@ -15,6 +15,27 @@ export type UptimeMonitor = {
   checked_at?: number | null
 }
 
+const normalizeCheckedAt = (value: unknown) => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return null
+  }
+  return numeric > 1_000_000_000_000 ? Math.floor(numeric / 1000) : Math.floor(numeric)
+}
+
+const normalizeMonitor = (monitor: UptimeMonitor) => ({
+  ...monitor,
+  history: Array.isArray(monitor.history) ? monitor.history.map((entry) => Number(entry)) : [],
+  last_status:
+    monitor.last_status === null || monitor.last_status === undefined
+      ? null
+      : Number(monitor.last_status),
+  checked_at: normalizeCheckedAt(monitor.checked_at),
+})
+
 export function useUptime() {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
@@ -37,7 +58,7 @@ export function useUptime() {
         }
         const data = await res.json()
         if (active) {
-          setMonitors(data?.monitors ?? [])
+          setMonitors((data?.monitors ?? []).map((monitor: UptimeMonitor) => normalizeMonitor(monitor)))
         }
       } finally {
         if (active) {
@@ -65,25 +86,24 @@ export function useUptime() {
       try {
         const payload = JSON.parse(event.data)
         if (payload?.type === "snapshot") {
-          setMonitors(payload?.monitors ?? [])
+          setMonitors((payload?.monitors ?? []).map((monitor: UptimeMonitor) => normalizeMonitor(monitor)))
           return
         }
         if (!payload?.id) {
           return
         }
         setMonitors((prev) =>
-          prev.map((monitor) =>
-            monitor.id === payload.id
-              ? {
-                  ...monitor,
-                  history: payload.history ?? monitor.history,
-                  last_status:
-                    payload.last_status ?? monitor.last_status ?? null,
-                  checked_at:
-                    payload.checked_at ?? monitor.checked_at ?? null,
-                }
-              : monitor
-          )
+          prev.map((monitor) => {
+            if (monitor.id !== payload.id) {
+              return monitor
+            }
+            return normalizeMonitor({
+              ...monitor,
+              history: payload.history ?? monitor.history,
+              last_status: payload.last_status ?? monitor.last_status ?? null,
+              checked_at: payload.checked_at ?? monitor.checked_at ?? null,
+            })
+          })
         )
       } catch (err) {
         return
