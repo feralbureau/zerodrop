@@ -14,7 +14,6 @@ COPY nginx/nginx.base.conf /etc/nginx/nginx.conf
 COPY nginx/entrypoint.sh /entrypoint.sh
 COPY --from=build /app/dist /usr/share/nginx/html
 
-RUN apk add --no-cache inotify-tools
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080
