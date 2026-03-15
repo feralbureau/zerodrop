@@ -28,8 +28,6 @@ services:
       dockerfile: dashboard/Dockerfile
     restart: unless-stopped
     container_name: zerodrop-nginx
-    ports:
-      - "80:80"
     depends_on:
       - api
     command: ["nginx", "-g", "daemon off;", "-c", "/shared_nginx/nginx.conf"]
