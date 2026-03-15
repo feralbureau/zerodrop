@@ -31,6 +31,7 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useProfile } from "@/hooks/use-profile"
+import { getApiBase } from "@/lib/api-base"
 
 type OnboardingDialogProps = {
   open: boolean
@@ -58,10 +59,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   const [targetSiteUrl, setTargetSiteUrl] = useState(profile.target_site_url)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const apiBase = useMemo(() => {
-    const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
-    return base.replace(/\/+$/, "")
-  }, [])
+  const apiBase = useMemo(() => getApiBase(), [])
 
   const initials = useMemo(() => {
     const parts = nickname.trim().split(/\s+/).filter(Boolean)

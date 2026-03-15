@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
+import { getApiBase } from "@/lib/api-base"
 
 type AllowlistData = {
   ip: string[]
@@ -25,10 +26,7 @@ export function useAllowlist(): UseAllowlistResult {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
 
-  const apiBase = useMemo(() => {
-    const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
-    return base.replace(/\/+$/, "")
-  }, [])
+  const apiBase = useMemo(() => getApiBase(), [])
 
   useEffect(() => {
     mountedRef.current = true

@@ -63,6 +63,7 @@ import { useWafLogs } from "@/hooks/use-waf-logs"
 import { useWafSettings, type WafSettingKey } from "@/hooks/use-waf-settings"
 import { useAllowlist } from "@/hooks/use-allowlist"
 import { useDenylist } from "@/hooks/use-denylist"
+import { getApiBase } from "@/lib/api-base"
 
 export function App() {
   return (
@@ -114,10 +115,7 @@ function AppShell() {
     ? Object.values(settings).every((value) => !value)
     : false
 
-  const apiBase = useMemo(() => {
-    const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
-    return base.replace(/\/+$/, "")
-  }, [])
+  const apiBase = useMemo(() => getApiBase(), [])
 
   const handleAddAllowlist = async () => {
     const trimmed = allowValue.trim()

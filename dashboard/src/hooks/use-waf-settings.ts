@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
+import { getApiBase } from "@/lib/api-base"
 
 export type WafSettingKey =
   | "allowlist_enabled"
@@ -56,10 +57,7 @@ async function fetchSettings(apiBase: string, apiKey: string, apiFetch: typeof f
 }
 
 export function useWafSettings() {
-  const apiBase = useMemo(() => {
-    const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
-    return base.replace(/\/+$/, "")
-  }, [])
+  const apiBase = useMemo(() => getApiBase(), [])
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
   const [settings, setSettings] = useState<SettingsState>(cache)
