@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - CADDY_ADMIN_URL=http://caddy:2019
+      - CADDY_ADMIN_URL=http://nginx:2019
       - DASHBOARD_HOST=waf.mimose.site
       - APP_HOST=app.mimose.site
     depends_on:
@@ -20,7 +20,7 @@ services:
     volumes:
       - redis-data:/data
 
-  caddy:
+  nginx:
     build:
       context: .
       dockerfile: caddy/Dockerfile
