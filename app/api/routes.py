@@ -193,105 +193,66 @@ async def _list_domains(redis: Redis) -> list[dict]:
     return sorted(items, key=lambda item: item["domain"])
 
 
-def _build_domain_route(domain: str, origin: str, api_key: str) -> dict:
-    parsed = urlparse(origin)
-    origin_host = parsed.hostname or parsed.netloc
-    scheme = parsed.scheme or "https"
-    port = parsed.port or (443 if scheme == "https" else 80)
-    transport = None
-    if scheme == "https":
-        transport = {"protocol": "http", "tls": {"server_name": origin_host}}
-    reverse_proxy = {
-        "handler": "reverse_proxy",
-        "upstreams": [{"dial": f"{origin_host}:{port}"}],
-        "headers": {
-            "request": {
-                "set": {
-                    "Host": [origin_host],
-                    "X-Forwarded-Host": ["{http.request.host}"],
-                    "X-Forwarded-Proto": ["{http.request.scheme}"],
-                }
-            }
-        },
-    }
-    if transport:
-        reverse_proxy["transport"] = transport
-    return {
-        "match": [{"host": [domain]}],
-        "handle": [
-            {
-                "handler": "forward_auth",
-                "address": "http://api:8000",
-                "uri": f"/api/check?api_key={api_key}",
-            },
-            reverse_proxy,
-        ],
-    }
-
-
-def _build_caddy_config(api_key: str | None, domains: list[dict]) -> dict:
+def _build_caddy_config(api_key: str | None, domains: list[dict]) -> str:
     dashboard_host = os.getenv("DASHBOARD_HOST", "").strip()
     if not dashboard_host:
         raise ValueError("DASHBOARD_HOST must be set")
 
-    dashboard_route = {
-        "match": [{"host": [dashboard_host]}],
-        "handle": [
-            {
-                "handler": "subroute",
-                "routes": [
-                    {
-                        "match": [{"path": ["/api/*"]}],
-                        "handle": [
-                            {
-                                "handler": "reverse_proxy",
-                                "upstreams": [{"dial": "api:8000"}],
-                            }
-                        ],
-                    },
-                    {
-                        "handle": [
-                            {
-                                "handler": "file_server",
-                                "root": "/srv",
-                            }
-                        ]
-                    },
-                ],
-            }
-        ],
-    }
+    caddyfile = f"""{{
+    admin 0.0.0.0:2019
+}}
 
-    domain_routes = []
+{dashboard_host} {{
+    handle /api/* {{
+        reverse_proxy api:8000
+    }}
+    handle {{
+        root * /srv
+        file_server
+    }}
+}}"""
+
     if api_key:
-        domain_routes = [
-            _build_domain_route(item["domain"], item["origin"], api_key)
-            for item in domains
-        ]
+        for item in domains:
+            domain = item["domain"]
+            origin = item["origin"]
+            parsed = urlparse(origin)
+            scheme = parsed.scheme or "https"
+            origin_host = parsed.hostname or parsed.netloc
+            port = parsed.port or (443 if scheme == "https" else 80)
 
-    return {
-        "admin": {"listen": "0.0.0.0:2019"},
-        "apps": {
-            "http": {
-                "servers": {
-                    "srv0": {
-                        "listen": [":80", ":443"],
-                        "routes": [dashboard_route, *domain_routes],
-                    }
-                }
-            }
-        },
-    }
+            transport_block = ""
+            if scheme == "https":
+                transport_block = f"""
+        transport http {{
+            tls
+            tls_server_name {origin_host}
+        }}"""
+
+            caddyfile += f"""
+{domain} {{
+    forward_auth api:8000 {{
+        uri /api/check?api_key={api_key}
+        copy_headers X-WAF-Reason
+    }}
+    reverse_proxy {origin_host}:{port} {{
+        header_up Host {origin_host}
+        header_up X-Forwarded-Host {{http.request.host}}
+        header_up X-Forwarded-Proto {{http.request.scheme}}{transport_block}
+    }}
+}}"""
+    return caddyfile
 
 
 async def _apply_caddy_config(redis: Redis, api_key: str | None) -> None:
     admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
     domains = await _list_domains(redis)
-    config = _build_caddy_config(api_key, domains)
+    config_text = _build_caddy_config(api_key, domains)
     async with httpx.AsyncClient() as client:
         response = await client.post(
             f"{admin_url}/load",
-            json=config,
+            content=config_text,
+            headers={"Content-Type": "text/caddyfile"},
             timeout=8.0,
         )
         if response.status_code >= 400:
