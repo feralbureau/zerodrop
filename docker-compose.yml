@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - CADDY_ADMIN_URL=http://nginx:2019
+      - CADDY_ADMIN_URL=http://caddy:2019
     depends_on:
       - redis
 
@@ -18,13 +18,17 @@ services:
     volumes:
       - redis-data:/data
 
-  nginx:
+  caddy:
     build:
       context: .
       dockerfile: caddy/Dockerfile
     restart: unless-stopped
     depends_on:
       - api
+    expose:
+      - "80"
+      - "81"
+      - "2019"
     environment:
       - CADDY_ADMIN=0.0.0.0:2019
     volumes:
