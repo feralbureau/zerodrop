@@ -12,7 +12,8 @@ async def api_key_required(request: Request, x_api_key: Optional[str] = Header(N
     if isinstance(expected, (bytes, bytearray)):
         expected = expected.decode()
 
-    if x_api_key != expected:
+    query_key = request.query_params.get("api_key")
+    if x_api_key != expected and query_key != expected:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid api key")
 
     return

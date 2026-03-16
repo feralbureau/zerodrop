@@ -1,9 +1,7 @@
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
-from pathlib import Path
 import os
 import json
-import hashlib
 import logging
 import httpx
 
@@ -154,31 +152,90 @@ async def _get_api_key(redis: Redis) -> str | None:
     return _decode_value(raw)
 
 
-def _render_nginx_config(api_key: str, origin: str) -> str:
-    parsed_origin = urlparse(origin)
-    template_path = Path(os.getenv("NGINX_TEMPLATE_PATH", "/app/nginx/nginx.conf.template"))
-    template = template_path.read_text(encoding="utf-8")
-    return (
-        template.replace("{{API_KEY}}", api_key)
-        .replace("{{ORIGIN_URL}}", origin)
-        .replace("{{ORIGIN_HOST}}", parsed_origin.netloc)
-    )
+def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
+    dashboard_host = os.getenv("DASHBOARD_HOST", "waf.mimose.site")
+    app_host = os.getenv("APP_HOST", "app.mimose.site")
+    routes = [
+        {
+            "match": [{"host": [dashboard_host]}],
+            "handle": [
+                {
+                    "handler": "subroute",
+                    "routes": [
+                        {
+                            "match": [{"path": ["/api/*"]}],
+                            "handle": [
+                                {
+                                    "handler": "reverse_proxy",
+                                    "upstreams": [{"dial": "api:8000"}],
+                                }
+                            ],
+                        },
+                        {"handle": [{"handler": "file_server", "root": "/srv"}]},
+                    ],
+                }
+            ],
+        }
+    ]
+
+    if api_key and origin:
+        parsed = urlparse(origin)
+        origin_host = parsed.hostname or parsed.netloc
+        scheme = parsed.scheme or "https"
+        port = parsed.port or (443 if scheme == "https" else 80)
+        transport = None
+        if scheme == "https":
+            transport = {"protocol": "http", "tls": {"server_name": origin_host}}
+        reverse_proxy = {
+            "handler": "reverse_proxy",
+            "upstreams": [{"dial": f"{origin_host}:{port}"}],
+            "headers": {
+                "request": {
+                    "set": {
+                        "Host": [origin_host],
+                        "X-Forwarded-Host": ["{http.request.host}"],
+                        "X-Forwarded-Proto": ["{http.request.scheme}"],
+                    }
+                }
+            },
+        }
+        if transport:
+            reverse_proxy["transport"] = transport
+        routes.append(
+            {
+                "match": [{"host": [app_host]}],
+                "handle": [
+                    {
+                        "handler": "forward_auth",
+                        "address": "http://api:8000",
+                        "uri": f"/api/check?api_key={api_key}",
+                    },
+                    reverse_proxy,
+                ],
+            }
+        )
+
+    return {
+        "apps": {
+            "http": {
+                "servers": {
+                    "srv0": {
+                        "listen": [":80", ":443"],
+                        "routes": routes,
+                    }
+                }
+            }
+        }
+    }
 
 
-def _write_nginx_config(rendered: str) -> dict:
-    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(rendered, encoding="utf-8")
-    stat = output_path.stat()
-    digest = hashlib.sha256(rendered.encode("utf-8")).hexdigest()
-    logger.info(
-        "nginx config updated path=%s size=%s mtime=%s sha256=%s",
-        output_path,
-        stat.st_size,
-        stat.st_mtime,
-        digest,
-    )
-    return {"path": str(output_path), "size": stat.st_size, "mtime": stat.st_mtime, "sha256": digest}
+async def _push_caddy_config(api_key: str | None, origin: str | None) -> None:
+    admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
+    payload = _build_caddy_config(api_key, origin)
+    async with httpx.AsyncClient() as client:
+        response = await client.put(f"{admin_url}/config/", json=payload, timeout=8.0)
+        response.raise_for_status()
+    logger.info("caddy config updated")
 
 
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
@@ -222,9 +279,11 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
     await redis.set("waf:api_key", api_key)
     await _set_profile(redis, profile)
     await redis.set("waf:origin", origin)
-    rendered = _render_nginx_config(api_key, origin)
     logger.info("setup origin=%s", origin)
-    _write_nginx_config(rendered)
+    try:
+        await _push_caddy_config(api_key, origin)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     settings = await get_waf_settings(redis)
     return JSONResponse({"configured": True, "profile": profile, "settings": settings})
 
@@ -243,12 +302,13 @@ async def update_origin(request: Request, payload: OriginUpdate, _=Depends(api_k
     current["target_site_url"] = origin
     await _set_profile(redis, current)
     api_key = await _get_api_key(redis)
-    config_info = None
     if api_key:
-        rendered = _render_nginx_config(api_key, origin)
         logger.info("origin update origin=%s", origin)
-        config_info = _write_nginx_config(rendered)
-    return JSONResponse({"updated": True, "origin": origin, "config": config_info})
+        try:
+            await _push_caddy_config(api_key, origin)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+    return JSONResponse({"updated": True, "origin": origin})
 
 
 @router.post("/key/regenerate")
@@ -260,8 +320,10 @@ async def regenerate_key(request: Request, _=Depends(api_key_required)) -> JSONR
     origin_value = _decode_value(origin)
     new_key = str(uuid4())
     await redis.set("waf:api_key", new_key)
-    rendered = _render_nginx_config(new_key, origin_value)
-    _write_nginx_config(rendered)
+    try:
+        await _push_caddy_config(new_key, origin_value)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return JSONResponse({"regenerated": True, "api_key": new_key})
 
 
@@ -269,28 +331,11 @@ async def regenerate_key(request: Request, _=Depends(api_key_required)) -> JSONR
 async def reset_system(request: Request, _=Depends(api_key_required)) -> JSONResponse:
     redis: Redis = request.app.state.redis
     await redis.flushdb()
-    _write_nginx_config("")
+    try:
+        await _push_caddy_config(None, None)
+    except Exception:
+        pass
     return JSONResponse({"reset": True})
-
-
-@router.get("/nginx/config")
-async def get_nginx_config(request: Request, _=Depends(api_key_required)) -> JSONResponse:
-    output_path = Path(os.getenv("NGINX_OUTPUT_PATH", "/shared_nginx/waf.conf"))
-    if not output_path.exists():
-        return JSONResponse({"exists": False, "path": str(output_path)})
-    content = output_path.read_text(encoding="utf-8")
-    stat = output_path.stat()
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-    return JSONResponse(
-        {
-            "exists": True,
-            "path": str(output_path),
-            "size": stat.st_size,
-            "mtime": stat.st_mtime,
-            "sha256": digest,
-            "config": content,
-        }
-    )
 
 
 @router.get("/key/validate")

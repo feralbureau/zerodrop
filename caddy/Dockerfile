@@ -10,8 +10,7 @@ RUN npm run build
 
 FROM caddy:2-alpine
 
+COPY caddy/caddy.json /etc/caddy/caddy.json
 COPY --from=build /app/dist /srv
 
-EXPOSE 8080
-
-CMD ["caddy", "file-server", "--root", "/srv", "--listen", ":8080"]
+CMD ["caddy", "run", "--config", "/etc/caddy/caddy.json"]

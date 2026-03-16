@@ -8,13 +8,11 @@ services:
     restart: unless-stopped
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - NGINX_TEMPLATE_PATH=/app/nginx/nginx.conf.template
-      - NGINX_OUTPUT_PATH=/shared_nginx/waf.conf
+      - CADDY_ADMIN_URL=http://caddy:2019
+      - DASHBOARD_HOST=waf.mimose.site
+      - APP_HOST=app.mimose.site
     depends_on:
       - redis
-    volumes:
-      - shared-nginx:/shared_nginx
-    # do not publish ports for api; only nginx can access it internally
 
   redis:
     image: redis:alpine
@@ -22,17 +20,23 @@ services:
     volumes:
       - redis-data:/data
 
-  nginx:
+  caddy:
     build:
       context: .
-      dockerfile: dashboard/Dockerfile
+      dockerfile: caddy/Dockerfile
     restart: unless-stopped
-    container_name: zerodrop-nginx
     depends_on:
       - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CADDY_ADMIN=0.0.0.0:2019
     volumes:
-      - shared-nginx:/shared_nginx
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   redis-data:
-  shared-nginx:
+  caddy_data:
+  caddy_config:
