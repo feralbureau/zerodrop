@@ -7,7 +7,3 @@
     file_server
   }
 }
-
-{$APP_HOST} {
-  respond "setup required" 503
-}

@@ -17,34 +17,25 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import { KeyRound, RefreshCw, RotateCcw, Sparkles } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { useProfile } from "@/hooks/use-profile"
 import { useWafSettings, type WafSettingKey } from "@/hooks/use-waf-settings"
 import { getApiBase } from "@/lib/api-base"
 
 export function Settings() {
   const { settings, refresh, updateSetting, updateSettings, isSaving } = useWafSettings()
-  const { profile } = useProfile()
   const { setApiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
   const apiBase = useMemo(() => getApiBase(), [])
-  const [origin, setOrigin] = useState(profile.target_site_url)
-  const [isSavingOrigin, setIsSavingOrigin] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [generatedKey, setGeneratedKey] = useState("")
+  const navigate = useNavigate()
 
   const rateLimitEnabled = settings?.rate_limit_enabled ?? false
-
-  useEffect(() => {
-    if (profile.target_site_url) {
-      setOrigin(profile.target_site_url)
-    }
-  }, [profile.target_site_url])
 
   const threatRules = [
     {
@@ -123,47 +114,14 @@ export function Settings() {
         <CardHeader>
           <CardTitle>Dashboard settings</CardTitle>
           <CardDescription>
-            Update origin routing, regenerate the API key, or reset the console.
+            Regenerate the API key, manage domains, or reset the console.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="origin-url">Origin URL</FieldLabel>
-              <Input
-                id="origin-url"
-                type="url"
-                placeholder="https://origin.example.com"
-                value={origin}
-                onChange={(event) => setOrigin(event.target.value)}
-              />
-              <FieldDescription>
-                Saving will regenerate the nginx config with the new origin.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={async () => {
-                const trimmed = origin.trim()
-                if (!trimmed) return
-                setIsSavingOrigin(true)
-                try {
-                  await apiFetch(`${apiBase}/api/origin`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ origin: trimmed }),
-                  })
-                } finally {
-                  setIsSavingOrigin(false)
-                }
-              }}
-              disabled={!origin.trim() || isSavingOrigin}
-            >
+            <Button variant="outline" size="sm" onClick={() => navigate("/domains")}>
               <RefreshCw data-icon="inline-start" />
-              {isSavingOrigin ? "Saving" : "Save origin"}
+              Manage domains
             </Button>
             <Button
               variant="outline"

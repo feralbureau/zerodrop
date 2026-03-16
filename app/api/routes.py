@@ -46,7 +46,6 @@ class WafSettingsUpdate(BaseModel):
 class ProfilePayload(BaseModel):
     nickname: str | None = None
     avatar_url: str | None = None
-    target_site_url: str | None = None
 
 
 class SettingsUpdate(WafSettingsUpdate):
@@ -55,6 +54,7 @@ class SettingsUpdate(WafSettingsUpdate):
 
 class SetupPayload(BaseModel):
     api_key: str
+    domain: str
     origin: str
     nickname: str
     avatar_url: str
@@ -69,6 +69,11 @@ class UptimeCreate(BaseModel):
     url: str
     check_type: str | None = None
     success_codes: str | None = None
+
+
+class DomainCreate(BaseModel):
+    domain: str
+    origin: str
 
 
 router = APIRouter()
@@ -127,7 +132,6 @@ async def _get_profile(redis: Redis) -> dict:
         return {
             "nickname": "Hiro Kamori",
             "avatar_url": "",
-            "target_site_url": "",
         }
     try:
         if isinstance(raw, (bytes, bytearray)):
@@ -137,7 +141,6 @@ async def _get_profile(redis: Redis) -> dict:
         return {
             "nickname": "Hiro Kamori",
             "avatar_url": "",
-            "target_site_url": "",
         }
 
 
@@ -151,105 +154,141 @@ async def _get_api_key(redis: Redis) -> str | None:
         return None
     return _decode_value(raw)
 
+def _normalize_domain(value: str) -> str:
+    if not value:
+        return ""
+    raw = value.strip().lower()
+    if not raw:
+        return ""
+    if "://" in raw:
+        parsed = urlparse(raw)
+        host = parsed.hostname or ""
+    else:
+        host = raw.split("/", 1)[0]
+    host = host.split(":", 1)[0]
+    return host
 
-def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
-    dashboard_host = os.getenv("DASHBOARD_HOST", "").strip()
-    app_host = os.getenv("APP_HOST", "").strip()
-    if not dashboard_host or not app_host:
-        raise ValueError("DASHBOARD_HOST and APP_HOST must be set")
 
-    dashboard_route = {
-        "match": [{"host": [dashboard_host]}],
-        "handle": [
-            {
-                "handler": "subroute",
-                "routes": [
-                    {
-                        "match": [{"path": ["/api/*"]}],
-                        "handle": [
-                            {
-                                "handler": "reverse_proxy",
-                                "upstreams": [{"dial": "api:8000"}],
-                            }
-                        ],
-                    },
-                    {
-                        "handle": [
-                            {
-                                "handler": "file_server",
-                                "root": "/srv",
-                            }
-                        ]
-                    },
-                ],
-            }
-        ],
-    }
+def _normalize_origin(value: str) -> str:
+    if not value:
+        return ""
+    raw = value.strip()
+    if not raw:
+        return ""
+    if "://" not in raw:
+        raw = f"https://{raw}"
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+    return raw
 
-    if api_key and origin:
-        parsed = urlparse(origin)
-        origin_host = parsed.hostname or parsed.netloc
-        scheme = parsed.scheme or "https"
-        port = parsed.port or (443 if scheme == "https" else 80)
-        transport = None
-        if scheme == "https":
-            transport = {"protocol": "http", "tls": {"server_name": origin_host}}
-        reverse_proxy = {
-            "handler": "reverse_proxy",
-            "upstreams": [{"dial": f"{origin_host}:{port}"}],
-            "headers": {
-                "request": {
-                    "set": {
-                        "Host": [origin_host],
-                        "X-Forwarded-Host": ["{http.request.host}"],
-                        "X-Forwarded-Proto": ["{http.request.scheme}"],
-                    }
+
+async def _list_domains(redis: Redis) -> list[dict]:
+    raw = await redis.hgetall("waf:domains")
+    items = []
+    for key, value in raw.items():
+        domain = _decode_value(key)
+        origin = _decode_value(value)
+        items.append({"domain": domain, "origin": origin})
+    return sorted(items, key=lambda item: item["domain"])
+
+
+def _build_domain_route(domain: str, origin: str, api_key: str) -> dict:
+    parsed = urlparse(origin)
+    origin_host = parsed.hostname or parsed.netloc
+    scheme = parsed.scheme or "https"
+    port = parsed.port or (443 if scheme == "https" else 80)
+    transport = None
+    if scheme == "https":
+        transport = {"protocol": "http", "tls": {"server_name": origin_host}}
+    reverse_proxy = {
+        "handler": "reverse_proxy",
+        "upstreams": [{"dial": f"{origin_host}:{port}"}],
+        "headers": {
+            "request": {
+                "set": {
+                    "Host": [origin_host],
+                    "X-Forwarded-Host": ["{http.request.host}"],
+                    "X-Forwarded-Proto": ["{http.request.scheme}"],
                 }
-            },
-        }
-        if transport:
-            reverse_proxy["transport"] = transport
-        app_handle = [
+            }
+        },
+    }
+    if transport:
+        reverse_proxy["transport"] = transport
+    return {
+        "id": f"waf.{domain}",
+        "match": [{"host": [domain]}],
+        "handle": [
             {
                 "handler": "forward_auth",
                 "address": "http://api:8000",
                 "uri": f"/api/check?api_key={api_key}",
             },
             reverse_proxy,
-        ]
-    else:
-        app_handle = [{"handler": "static_response", "status_code": 503}]
-
-    app_route = {
-        "match": [{"host": [app_host]}],
-        "handle": app_handle,
-    }
-
-    return {
-        "apps": {
-            "http": {
-                "servers": {
-                    "main": {
-                        "listen": [":80", ":443"],
-                        "routes": [dashboard_route, app_route],
-                    }
-                }
-            }
-        }
+        ],
     }
 
 
-async def _push_caddy_config(api_key: str | None, origin: str | None) -> None:
-    admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
-    payload = _build_caddy_config(api_key, origin)
+async def _fetch_caddy_routes(admin_url: str) -> list[dict]:
     async with httpx.AsyncClient() as client:
-        response = await client.put(
-            f"{admin_url}/config/apps/http/servers",
-            json=payload["apps"]["http"]["servers"],
+        response = await client.get(
+            f"{admin_url}/config/apps/http/servers/srv0/routes",
             timeout=8.0,
         )
         response.raise_for_status()
-    logger.info("caddy config updated")
+        return response.json()
+
+
+async def _write_caddy_routes(admin_url: str, routes: list[dict]) -> None:
+    async with httpx.AsyncClient() as client:
+        response = await client.put(
+            f"{admin_url}/config/apps/http/servers/srv0/routes",
+            json=routes,
+            timeout=8.0,
+        )
+        response.raise_for_status()
+
+
+async def _reconcile_caddy_routes(redis: Redis, api_key: str) -> None:
+    admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
+    existing = await _fetch_caddy_routes(admin_url)
+    preserved = [
+        route
+        for route in existing
+        if not str(route.get("id", "")).startswith("waf.")
+    ]
+    domains = await _list_domains(redis)
+    dynamic = [
+        _build_domain_route(item["domain"], item["origin"], api_key)
+        for item in domains
+    ]
+    await _write_caddy_routes(admin_url, preserved + dynamic)
+    logger.info("caddy routes updated total=%s", len(dynamic))
+
+
+async def _add_caddy_route(domain: str, origin: str, api_key: str) -> None:
+    admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
+    route = _build_domain_route(domain, origin, api_key)
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{admin_url}/config/apps/http/servers/srv0/routes",
+            json=route,
+            timeout=8.0,
+        )
+        response.raise_for_status()
+    logger.info("caddy route added domain=%s", domain)
+
+
+async def _clear_caddy_routes() -> None:
+    admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
+    existing = await _fetch_caddy_routes(admin_url)
+    preserved = [
+        route
+        for route in existing
+        if not str(route.get("id", "")).startswith("waf.")
+    ]
+    await _write_caddy_routes(admin_url, preserved)
 
 
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
@@ -269,11 +308,14 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
         return JSONResponse({"configured": True}, status_code=409)
 
     api_key = payload.api_key.strip()
-    origin = payload.origin.strip()
+    domain = _normalize_domain(payload.domain)
+    origin = _normalize_origin(payload.origin)
     nickname = payload.nickname.strip()
     avatar_url = payload.avatar_url.strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="api_key required")
+    if not domain:
+        raise HTTPException(status_code=400, detail="domain required")
     if not origin:
         raise HTTPException(status_code=400, detail="origin required")
     if not nickname:
@@ -281,21 +323,16 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
     if not avatar_url:
         raise HTTPException(status_code=400, detail="avatar_url required")
 
-    parsed_origin = urlparse(origin)
-    if not parsed_origin.scheme or not parsed_origin.netloc:
-        raise HTTPException(status_code=400, detail="origin must be a valid URL")
-
     profile = {
         "nickname": nickname,
         "avatar_url": avatar_url,
-        "target_site_url": origin,
     }
     await redis.set("waf:api_key", api_key)
     await _set_profile(redis, profile)
-    await redis.set("waf:origin", origin)
-    logger.info("setup origin=%s", origin)
+    await redis.hset("waf:domains", domain, origin)
+    logger.info("setup domain=%s origin=%s", domain, origin)
     try:
-        await _push_caddy_config(api_key, origin)
+        await _add_caddy_route(domain, origin, api_key)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     settings = await get_waf_settings(redis)
@@ -305,37 +342,31 @@ async def setup(request: Request, payload: SetupPayload) -> JSONResponse:
 @router.put("/origin")
 async def update_origin(request: Request, payload: OriginUpdate, _=Depends(api_key_required)) -> JSONResponse:
     redis: Redis = request.app.state.redis
-    origin = payload.origin.strip()
+    origin = _normalize_origin(payload.origin)
     if not origin:
         raise HTTPException(status_code=400, detail="origin required")
-    parsed_origin = urlparse(origin)
-    if not parsed_origin.scheme or not parsed_origin.netloc:
-        raise HTTPException(status_code=400, detail="origin must be a valid URL")
-    await redis.set("waf:origin", origin)
-    current = await _get_profile(redis)
-    current["target_site_url"] = origin
-    await _set_profile(redis, current)
+    domains = await _list_domains(redis)
+    if len(domains) != 1:
+        raise HTTPException(status_code=409, detail="use /api/domains to update origins")
+    domain = domains[0]["domain"]
+    await redis.hset("waf:domains", domain, origin)
     api_key = await _get_api_key(redis)
     if api_key:
-        logger.info("origin update origin=%s", origin)
+        logger.info("origin update domain=%s origin=%s", domain, origin)
         try:
-            await _push_caddy_config(api_key, origin)
+            await _reconcile_caddy_routes(redis, api_key)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=str(exc))
-    return JSONResponse({"updated": True, "origin": origin})
+    return JSONResponse({"updated": True, "origin": origin, "domain": domain})
 
 
 @router.post("/key/regenerate")
 async def regenerate_key(request: Request, _=Depends(api_key_required)) -> JSONResponse:
     redis: Redis = request.app.state.redis
-    origin = await redis.get("waf:origin")
-    if not origin:
-        raise HTTPException(status_code=400, detail="origin not configured")
-    origin_value = _decode_value(origin)
     new_key = str(uuid4())
     await redis.set("waf:api_key", new_key)
     try:
-        await _push_caddy_config(new_key, origin_value)
+        await _reconcile_caddy_routes(redis, new_key)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     return JSONResponse({"regenerated": True, "api_key": new_key})
@@ -346,7 +377,7 @@ async def reset_system(request: Request, _=Depends(api_key_required)) -> JSONRes
     redis: Redis = request.app.state.redis
     await redis.flushdb()
     try:
-        await _push_caddy_config(None, None)
+        await _clear_caddy_routes()
     except Exception:
         pass
     return JSONResponse({"reset": True})
@@ -359,6 +390,52 @@ async def validate_key(request: Request, x_api_key: str | None = Header(None)) -
     if not expected:
         return JSONResponse({"configured": False, "valid": False})
     return JSONResponse({"configured": True, "valid": x_api_key == expected})
+
+
+@router.get("/domains")
+async def list_domains(request: Request, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    return JSONResponse({"domains": await _list_domains(redis)})
+
+
+@router.post("/domains")
+async def add_domain(request: Request, payload: DomainCreate, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    domain = _normalize_domain(payload.domain)
+    origin = _normalize_origin(payload.origin)
+    if not domain:
+        raise HTTPException(status_code=400, detail="domain required")
+    if not origin:
+        raise HTTPException(status_code=400, detail="origin required")
+    api_key = await _get_api_key(redis)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="api key not configured")
+    existing = await redis.hget("waf:domains", domain)
+    await redis.hset("waf:domains", domain, origin)
+    try:
+        if existing:
+            await _reconcile_caddy_routes(redis, api_key)
+        else:
+            await _add_caddy_route(domain, origin, api_key)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return JSONResponse({"added": True, "domain": domain, "origin": origin})
+
+
+@router.delete("/domains/{domain}")
+async def delete_domain(request: Request, domain: str, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    normalized = _normalize_domain(domain)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="domain required")
+    removed = await redis.hdel("waf:domains", normalized)
+    api_key = await _get_api_key(redis)
+    if api_key:
+        try:
+            await _reconcile_caddy_routes(redis, api_key)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
+    return JSONResponse({"deleted": True if removed else False, "domain": normalized})
 
 
 @router.api_route("/check", methods=["GET", "POST", "HEAD", "OPTIONS"])

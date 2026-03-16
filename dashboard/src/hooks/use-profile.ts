@@ -7,7 +7,6 @@ import { getApiBase } from "@/lib/api-base"
 type Profile = {
   nickname: string
   avatar_url: string
-  target_site_url: string
 }
 
 type UseProfileResult = {
@@ -20,7 +19,6 @@ type UseProfileResult = {
 const defaultProfile: Profile = {
   nickname: "Hiro Kamori",
   avatar_url: "",
-  target_site_url: "",
 }
 
 const storageKey = "waf_profile_cache"

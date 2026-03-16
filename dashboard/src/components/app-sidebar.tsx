@@ -36,6 +36,7 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   ChevronDown,
   Cloud,
+  Globe,
   LayoutDashboard,
   LogOut,
   Settings2,
@@ -70,6 +71,11 @@ const navigation = [
     title: "Allowlist",
     url: "/allowlist",
     icon: ShieldCheck,
+  },
+  {
+    title: "Domains",
+    url: "/domains",
+    icon: Globe,
   },
   {
     title: "Settings",

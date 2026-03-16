@@ -56,6 +56,7 @@ import { OnboardingDialog } from "@/components/onboarding"
 import { Allowlist } from "@/pages/allowlist"
 import { Blacklist } from "@/pages/blacklist"
 import { Dashboard } from "@/pages/dashboard"
+import { Domains } from "@/pages/domains"
 import { Settings } from "@/pages/settings"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
@@ -89,6 +90,10 @@ const pageMeta = {
   "/settings": {
     title: "Settings",
     subtitle: "WAF rules and enforcement toggles",
+  },
+  "/domains": {
+    title: "Domains",
+    subtitle: "Protected sites and origins",
   },
 }
 
@@ -437,6 +442,7 @@ function AppShell() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/blacklist" element={<Blacklist />} />
             <Route path="/allowlist" element={<Allowlist />} />
+            <Route path="/domains" element={<Domains />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

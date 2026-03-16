@@ -54,9 +54,11 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   const [isValidating, setIsValidating] = useState(false)
   const [copied, setCopied] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isExistingKey, setIsExistingKey] = useState(false)
   const [nickname, setNickname] = useState(profile.nickname)
   const [avatarUrl, setAvatarUrl] = useState(profile.avatar_url)
-  const [targetSiteUrl, setTargetSiteUrl] = useState(profile.target_site_url)
+  const [domain, setDomain] = useState("")
+  const [origin, setOrigin] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const apiBase = useMemo(() => getApiBase(), [])
@@ -67,7 +69,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   }, [nickname])
 
   const progressValue = ((step + 1) / steps.length) * 100
-  const isProfileReady = Boolean(nickname.trim() && targetSiteUrl.trim())
+  const isProfileReady = Boolean(nickname.trim() && domain.trim() && origin.trim())
 
   const handleGenerateKey = () => {
     const key = createApiKey()
@@ -75,6 +77,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
     setSelectedKey(key)
     setManualKey("")
     setKeyError("")
+    setIsExistingKey(false)
   }
 
   const handleUseKey = async () => {
@@ -90,6 +93,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
       if (data?.valid) {
         setSelectedKey(trimmed)
         setGeneratedKey("")
+        setIsExistingKey(true)
         setApiKey(trimmed)
         return
       }
@@ -128,23 +132,47 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
     const payload = {
       nickname: nickname.trim() || profile.nickname,
       avatar_url: avatarValue,
-      target_site_url: targetSiteUrl.trim(),
     }
     window.localStorage.setItem("waf_profile_cache", JSON.stringify(payload))
     window.dispatchEvent(new Event("waf-profile-sync"))
     try {
-      await fetch(`${apiBase}/api/setup`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          api_key: selectedKey,
-          origin: targetSiteUrl.trim(),
-          nickname: payload.nickname,
-          avatar_url: payload.avatar_url,
-        }),
-      })
+      if (isExistingKey) {
+        await fetch(`${apiBase}/api/domains`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": selectedKey,
+          },
+          body: JSON.stringify({
+            domain: domain.trim(),
+            origin: origin.trim(),
+          }),
+        })
+        await fetch(`${apiBase}/api/settings`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": selectedKey,
+          },
+          body: JSON.stringify({
+            profile: payload,
+          }),
+        })
+      } else {
+        await fetch(`${apiBase}/api/setup`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            api_key: selectedKey,
+            domain: domain.trim(),
+            origin: origin.trim(),
+            nickname: payload.nickname,
+            avatar_url: payload.avatar_url,
+          }),
+        })
+      }
     } finally {
       setApiKey(selectedKey)
       setIsSaving(false)
@@ -310,16 +338,28 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                         />
                       </Field>
                       <Field>
-                        <FieldLabel htmlFor="origin-url">Website origin URL</FieldLabel>
+                        <FieldLabel htmlFor="domain-name">Domain</FieldLabel>
+                        <Input
+                          id="domain-name"
+                          placeholder="example.com"
+                          value={domain}
+                          onChange={(event) => setDomain(event.target.value)}
+                        />
+                        <FieldDescription>
+                          The hostname you want to protect and proxy through ZeroDrop.
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="origin-url">Origin URL</FieldLabel>
                         <Input
                           id="origin-url"
                           type="url"
                           placeholder="https://origin.example.com"
-                          value={targetSiteUrl}
-                          onChange={(event) => setTargetSiteUrl(event.target.value)}
+                          value={origin}
+                          onChange={(event) => setOrigin(event.target.value)}
                         />
                         <FieldDescription>
-                          Used to validate WAF routing and request checks.
+                          We forward requests here after the WAF check.
                         </FieldDescription>
                       </Field>
                     </FieldGroup>
