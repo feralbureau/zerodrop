@@ -153,14 +153,6 @@ async def _get_api_key(redis: Redis) -> str | None:
 
 
 def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
-    dashboard_routes = [
-        {
-            "match": [{"path": ["/api/*"]}],
-            "handle": [{"handler": "reverse_proxy", "upstreams": [{"dial": "api:8000"}]}],
-        },
-        {"handle": [{"handler": "file_server", "root": "/srv"}]},
-    ]
-
     app_routes = []
     if api_key and origin:
         parsed = urlparse(origin)
@@ -204,7 +196,6 @@ def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
         "apps": {
             "http": {
                 "servers": {
-                    "dashboard": {"listen": [":80"], "routes": dashboard_routes},
                     "app": {"listen": [":81"], "routes": app_routes},
                 }
             }
@@ -216,7 +207,11 @@ async def _push_caddy_config(api_key: str | None, origin: str | None) -> None:
     admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
     payload = _build_caddy_config(api_key, origin)
     async with httpx.AsyncClient() as client:
-        response = await client.put(f"{admin_url}/config/", json=payload, timeout=8.0)
+        response = await client.patch(
+            f"{admin_url}/config/apps/http/servers/app",
+            json=payload["apps"]["http"]["servers"]["app"],
+            timeout=8.0,
+        )
         response.raise_for_status()
     logger.info("caddy config updated")
 

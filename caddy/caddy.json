@@ -1,5 +1,46 @@
 {
   "admin": {
     "listen": "0.0.0.0:2019"
+  },
+  "apps": {
+    "http": {
+      "servers": {
+        "dashboard": {
+          "listen": [":80"],
+          "routes": [
+            {
+              "match": [{"path": ["/api/*"]}],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [{"dial": "api:8000"}]
+                }
+              ]
+            },
+            {
+              "handle": [
+                {
+                  "handler": "file_server",
+                  "root": "/srv"
+                }
+              ]
+            }
+          ]
+        },
+        "app": {
+          "listen": [":81"],
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "static_response",
+                  "status_code": 503
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
   }
 }
