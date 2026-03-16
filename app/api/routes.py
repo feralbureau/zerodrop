@@ -153,31 +153,15 @@ async def _get_api_key(redis: Redis) -> str | None:
 
 
 def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
-    dashboard_host = os.getenv("DASHBOARD_HOST", "waf.mimose.site")
-    app_host = os.getenv("APP_HOST", "app.mimose.site")
-    routes = [
+    dashboard_routes = [
         {
-            "match": [{"host": [dashboard_host]}],
-            "handle": [
-                {
-                    "handler": "subroute",
-                    "routes": [
-                        {
-                            "match": [{"path": ["/api/*"]}],
-                            "handle": [
-                                {
-                                    "handler": "reverse_proxy",
-                                    "upstreams": [{"dial": "api:8000"}],
-                                }
-                            ],
-                        },
-                        {"handle": [{"handler": "file_server", "root": "/srv"}]},
-                    ],
-                }
-            ],
-        }
+            "match": [{"path": ["/api/*"]}],
+            "handle": [{"handler": "reverse_proxy", "upstreams": [{"dial": "api:8000"}]}],
+        },
+        {"handle": [{"handler": "file_server", "root": "/srv"}]},
     ]
 
+    app_routes = []
     if api_key and origin:
         parsed = urlparse(origin)
         origin_host = parsed.hostname or parsed.netloc
@@ -201,9 +185,8 @@ def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
         }
         if transport:
             reverse_proxy["transport"] = transport
-        routes.append(
+        app_routes = [
             {
-                "match": [{"host": [app_host]}],
                 "handle": [
                     {
                         "handler": "forward_auth",
@@ -211,18 +194,18 @@ def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
                         "uri": f"/api/check?api_key={api_key}",
                     },
                     reverse_proxy,
-                ],
+                ]
             }
-        )
+        ]
+    else:
+        app_routes = [{"handle": [{"handler": "static_response", "status_code": 503}]}]
 
     return {
         "apps": {
             "http": {
                 "servers": {
-                    "srv0": {
-                        "listen": [":80", ":443"],
-                        "routes": routes,
-                    }
+                    "dashboard": {"listen": [":8080"], "routes": dashboard_routes},
+                    "app": {"listen": [":8081"], "routes": app_routes},
                 }
             }
         }

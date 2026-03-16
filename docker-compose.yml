@@ -9,8 +9,6 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CADDY_ADMIN_URL=http://nginx:2019
-      - DASHBOARD_HOST=waf.mimose.site
-      - APP_HOST=app.mimose.site
     depends_on:
       - redis
 
@@ -27,9 +25,6 @@ services:
     restart: unless-stopped
     depends_on:
       - api
-    ports:
-      - "80:80"
-      - "443:443"
     environment:
       - CADDY_ADMIN=0.0.0.0:2019
     volumes:
