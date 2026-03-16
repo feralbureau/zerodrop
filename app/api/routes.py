@@ -295,7 +295,9 @@ async def _apply_caddy_config(redis: Redis, api_key: str | None) -> None:
             json=config,
             timeout=8.0,
         )
-        response.raise_for_status()
+        if response.status_code >= 400:
+            detail = response.text.strip()
+            raise HTTPException(status_code=502, detail=f"caddy load failed: {detail}")
     logger.info("caddy config applied domains=%s", len(domains))
 
 
