@@ -208,6 +208,7 @@ def _build_caddy_config(api_key: str | None, domains: list[dict]) -> str:
     }}
     handle {{
         root * /srv
+        try_files {{path}} /index.html
         file_server
     }}
 }}"""
@@ -409,7 +410,13 @@ async def delete_domain(request: Request, domain: str, _=Depends(api_key_require
 async def check_request(request: Request, _=Depends(api_key_required)) -> Response:
     ip = _extract_client_ip(request)
     redis: Redis = request.app.state.redis
-    orig_uri = request.headers.get("x-original-uri") or str(request.url)
+    orig_uri = (
+        request.headers.get("x-original-uri")
+        or request.headers.get("x-forwarded-uri")
+        or request.headers.get("x-forwarded-url")
+        or request.headers.get("x-rewrite-url")
+        or str(request.url)
+    )
     parsed = urlparse(orig_uri)
     query_params = _parse_query_params(parsed.query)
 
@@ -419,7 +426,7 @@ async def check_request(request: Request, _=Depends(api_key_required)) -> Respon
             redis,
             ip,
             path=parsed.path,
-            method=request.headers.get("x-original-method") or request.method,
+            method=request.headers.get("x-original-method") or request.headers.get("x-forwarded-method") or request.method,
             headers=request.headers,
             query_params=query_params,
             body=body,
