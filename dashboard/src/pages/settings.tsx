@@ -167,11 +167,13 @@ export function Settings() {
           </div>
           {generatedKey ? (
             <div className="flex flex-col gap-2">
-              <FieldLabel htmlFor="new-key">New API key</FieldLabel>
+              <label htmlFor="new-key" className="text-sm font-medium">
+                New API key
+              </label>
               <Input id="new-key" value={generatedKey} readOnly />
-              <FieldDescription>
-                Save this key; it has already been applied to nginx.
-              </FieldDescription>
+              <p className="text-xs text-muted-foreground">
+                Save this key; it has already been applied to Caddy.
+              </p>
             </div>
           ) : null}
         </CardContent>
