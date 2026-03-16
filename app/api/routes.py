@@ -153,7 +153,39 @@ async def _get_api_key(redis: Redis) -> str | None:
 
 
 def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
-    app_routes = []
+    dashboard_host = os.getenv("DASHBOARD_HOST", "").strip()
+    app_host = os.getenv("APP_HOST", "").strip()
+    if not dashboard_host or not app_host:
+        raise ValueError("DASHBOARD_HOST and APP_HOST must be set")
+
+    dashboard_route = {
+        "match": [{"host": [dashboard_host]}],
+        "handle": [
+            {
+                "handler": "subroute",
+                "routes": [
+                    {
+                        "match": [{"path": ["/api/*"]}],
+                        "handle": [
+                            {
+                                "handler": "reverse_proxy",
+                                "upstreams": [{"dial": "api:8000"}],
+                            }
+                        ],
+                    },
+                    {
+                        "handle": [
+                            {
+                                "handler": "file_server",
+                                "root": "/srv",
+                            }
+                        ]
+                    },
+                ],
+            }
+        ],
+    }
+
     if api_key and origin:
         parsed = urlparse(origin)
         origin_host = parsed.hostname or parsed.netloc
@@ -177,26 +209,30 @@ def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
         }
         if transport:
             reverse_proxy["transport"] = transport
-        app_routes = [
+        app_handle = [
             {
-                "handle": [
-                    {
-                        "handler": "forward_auth",
-                        "address": "http://api:8000",
-                        "uri": f"/api/check?api_key={api_key}",
-                    },
-                    reverse_proxy,
-                ]
-            }
+                "handler": "forward_auth",
+                "address": "http://api:8000",
+                "uri": f"/api/check?api_key={api_key}",
+            },
+            reverse_proxy,
         ]
     else:
-        app_routes = [{"handle": [{"handler": "static_response", "status_code": 503}]}]
+        app_handle = [{"handler": "static_response", "status_code": 503}]
+
+    app_route = {
+        "match": [{"host": [app_host]}],
+        "handle": app_handle,
+    }
 
     return {
         "apps": {
             "http": {
                 "servers": {
-                    "app": {"listen": [":8080"], "routes": app_routes},
+                    "main": {
+                        "listen": [":80", ":443"],
+                        "routes": [dashboard_route, app_route],
+                    }
                 }
             }
         }
@@ -207,9 +243,9 @@ async def _push_caddy_config(api_key: str | None, origin: str | None) -> None:
     admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
     payload = _build_caddy_config(api_key, origin)
     async with httpx.AsyncClient() as client:
-        response = await client.patch(
-            f"{admin_url}/config/apps/http/servers/app",
-            json=payload["apps"]["http"]["servers"]["app"],
+        response = await client.put(
+            f"{admin_url}/config/apps/http/servers",
+            json=payload["apps"]["http"]["servers"],
             timeout=8.0,
         )
         response.raise_for_status()

@@ -9,6 +9,8 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - CADDY_ADMIN_URL=http://caddy:2019
+      - DASHBOARD_HOST=${DASHBOARD_HOST}
+      - APP_HOST=${APP_HOST}
     depends_on:
       - redis
 
@@ -27,10 +29,12 @@ services:
       - api
     expose:
       - "80"
-      - "8080"
+      - "443"
       - "2019"
     environment:
       - CADDY_ADMIN=0.0.0.0:2019
+      - DASHBOARD_HOST=${DASHBOARD_HOST}
+      - APP_HOST=${APP_HOST}
     volumes:
       - caddy_data:/data
       - caddy_config:/config

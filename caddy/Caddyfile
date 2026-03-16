@@ -1,0 +1,13 @@
+{$DASHBOARD_HOST} {
+  handle /api/* {
+    reverse_proxy api:8000
+  }
+  handle {
+    root * /srv
+    file_server
+  }
+}
+
+{$APP_HOST} {
+  respond "setup required" 503
+}
