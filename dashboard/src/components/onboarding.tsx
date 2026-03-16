@@ -40,6 +40,7 @@ type OnboardingDialogProps = {
 const steps = [
   { id: "connect", title: "Connect your WAF" },
   { id: "profile", title: "Personalize the console" },
+  { id: "domain", title: "Add your first domain" },
   { id: "finish", title: "Save your API key" },
 ]
 
@@ -69,7 +70,8 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   }, [nickname])
 
   const progressValue = ((step + 1) / steps.length) * 100
-  const isProfileReady = Boolean(nickname.trim() && domain.trim() && origin.trim())
+  const isProfileReady = Boolean(nickname.trim())
+  const isDomainReady = Boolean(domain.trim() && origin.trim())
 
   const handleGenerateKey = () => {
     const key = createApiKey()
@@ -288,7 +290,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
           ) : null}
           {step === 1 ? (
             <div className="flex flex-col gap-4">
-              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
                 <Card>
                   <CardHeader>
                     <CardTitle>Profile details</CardTitle>
@@ -297,7 +299,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-4">
                       <Avatar size="lg">
                         {avatarUrl ? (
                           <AvatarImage src={avatarUrl} alt={nickname} />
@@ -305,7 +307,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                           <AvatarFallback>{initials}</AvatarFallback>
                         )}
                       </Avatar>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-1 flex-col gap-2">
                         <Button
                           variant="outline"
                           onClick={() => fileInputRef.current?.click()}
@@ -336,33 +338,37 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                           value={nickname}
                           onChange={(event) => setNickname(event.target.value)}
                         />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="domain-name">Domain</FieldLabel>
-                        <Input
-                          id="domain-name"
-                          placeholder="example.com"
-                          value={domain}
-                          onChange={(event) => setDomain(event.target.value)}
-                        />
                         <FieldDescription>
-                          The hostname you want to protect and proxy through ZeroDrop.
-                        </FieldDescription>
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="origin-url">Origin URL</FieldLabel>
-                        <Input
-                          id="origin-url"
-                          type="url"
-                          placeholder="https://origin.example.com"
-                          value={origin}
-                          onChange={(event) => setOrigin(event.target.value)}
-                        />
-                        <FieldDescription>
-                          We forward requests here after the WAF check.
+                          We use this on the sidebar, reports, and notifications.
                         </FieldDescription>
                       </Field>
                     </FieldGroup>
+                  </CardContent>
+                </Card>
+                <Card className="border-dashed">
+                  <CardHeader>
+                    <CardTitle>Preview</CardTitle>
+                    <CardDescription>
+                      How your profile appears in the console.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar size="lg">
+                        {avatarUrl ? (
+                          <AvatarImage src={avatarUrl} alt={nickname} />
+                        ) : (
+                          <AvatarFallback>{initials}</AvatarFallback>
+                        )}
+                      </Avatar>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{nickname.trim() || "ZeroDrop"}</span>
+                        <span className="text-xs text-muted-foreground">Admin console</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Use a short team name so it fits cleanly in the sidebar.
+                    </div>
                   </CardContent>
                 </Card>
               </div>
@@ -377,6 +383,84 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
             </div>
           ) : null}
           {step === 2 ? (
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Domain routing</CardTitle>
+                    <CardDescription>
+                      Tell us which hostname to protect and where to forward traffic.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3">
+                    <FieldGroup>
+                      <Field>
+                        <FieldLabel htmlFor="domain-name">Domain</FieldLabel>
+                        <Input
+                          id="domain-name"
+                          placeholder="example.com"
+                          value={domain}
+                          onChange={(event) => setDomain(event.target.value)}
+                        />
+                        <FieldDescription>
+                          The public hostname you want to place behind ZeroDrop.
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="origin-url">Origin URL</FieldLabel>
+                        <Input
+                          id="origin-url"
+                          type="url"
+                          placeholder="https://origin.example.com"
+                          value={origin}
+                          onChange={(event) => setOrigin(event.target.value)}
+                        />
+                        <FieldDescription>
+                          Requests are forwarded here after WAF checks.
+                        </FieldDescription>
+                      </Field>
+                    </FieldGroup>
+                  </CardContent>
+                </Card>
+                <Card className="border-dashed">
+                  <CardHeader>
+                    <CardTitle>Point your DNS</CardTitle>
+                    <CardDescription>
+                      Route traffic to ZeroDrop before you go live.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
+                    <div className="flex items-start gap-2">
+                      <span className="mt-1 size-1.5 rounded-full bg-primary" />
+                      <span>
+                        Create an A record for your domain to{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">
+                          74.248.232.187
+                        </code>
+                        .
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="mt-1 size-1.5 rounded-full bg-primary" />
+                      <span>If you use Cloudflare, set Proxy status to DNS only (gray cloud).</span>
+                    </div>
+                    <div className="text-xs">
+                      DNS changes can take a few minutes to propagate.
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="flex justify-between gap-2">
+                <Button variant="outline" onClick={() => setStep(1)}>
+                  Back
+                </Button>
+                <Button onClick={() => setStep(3)} disabled={!isDomainReady}>
+                  Continue
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {step === 3 ? (
             <div className="flex flex-col gap-4">
               <Card>
                 <CardHeader>
@@ -400,20 +484,20 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                       )}
                       {copied ? "Copied" : "Copy key"}
                     </Button>
-                    <Button onClick={handleFinish} disabled={!selectedKey || !isProfileReady || isSaving}>
+                    <Button onClick={handleFinish} disabled={!selectedKey || !isProfileReady || !isDomainReady || isSaving}>
                       Finish setup
                     </Button>
                   </div>
                 </CardContent>
               </Card>
               <div className="flex justify-between gap-2">
-                <Button variant="outline" onClick={() => setStep(1)}>
+                <Button variant="outline" onClick={() => setStep(2)}>
                   Back
                 </Button>
                 <Button
                   variant="ghost"
                   onClick={handleFinish}
-                  disabled={!selectedKey || !isProfileReady || isSaving}
+                  disabled={!selectedKey || !isProfileReady || !isDomainReady || isSaving}
                 >
                   Save and close
                 </Button>

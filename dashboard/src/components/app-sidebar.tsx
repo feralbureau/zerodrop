@@ -45,7 +45,7 @@ import {
   Trash2,
   User,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 
 import { useWafSettings } from "@/hooks/use-waf-settings"
@@ -54,6 +54,7 @@ import { useAllowlist } from "@/hooks/use-allowlist"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useProfile } from "@/hooks/use-profile"
 import { useUptime } from "@/hooks/use-uptime"
+import { useNow } from "@/hooks/use-now"
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
 
 const navigation = [
@@ -102,7 +103,7 @@ export function AppSidebar() {
   const [uptimeType, setUptimeType] = useState("http")
   const [uptimeCodes, setUptimeCodes] = useState("200-399")
   const [uptimeSaving, setUptimeSaving] = useState(false)
-  const [now, setNow] = useState(Date.now())
+  const now = useNow()
   const initials = useMemo(() => {
     const parts = (nickname || profile.nickname).trim().split(/\s+/).filter(Boolean)
     return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "HK"
@@ -151,12 +152,12 @@ export function AppSidebar() {
         ? "bg-[color:var(--warning)]"
         : "bg-destructive"
 
-  const formatChecked = (timestamp?: number | null) => {
+  const formatChecked = (timestamp: number | null | undefined, nowMs: number) => {
     if (!timestamp) {
       return "pending"
     }
     const normalized = timestamp > 1_000_000_000_000 ? Math.floor(timestamp / 1000) : timestamp
-    const diff = Math.max(0, Math.floor(now / 1000 - normalized))
+    const diff = Math.max(0, Math.floor(nowMs / 1000 - normalized))
     if (diff < 60) {
       return `${diff}s ago`
     }
@@ -177,11 +178,6 @@ export function AppSidebar() {
       number | null
     >
   }
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(id)
-  }, [])
 
   return (
     <Sidebar>
@@ -268,7 +264,7 @@ export function AppSidebar() {
                     </div>
                     <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                       <span>{valid.length ? `${percent}%` : "waiting"}</span>
-                      <span>{formatChecked(monitor.checked_at)}</span>
+                      <span>{formatChecked(monitor.checked_at, now)}</span>
                     </div>
                   </div>
                 )

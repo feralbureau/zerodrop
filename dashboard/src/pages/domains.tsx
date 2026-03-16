@@ -67,6 +67,32 @@ export function Domains() {
                 Enter the domain you want to protect and the origin to proxy to.
               </DialogDescription>
             </DialogHeader>
+            <Card className="border-dashed">
+              <CardHeader>
+                <CardTitle className="text-sm">Connect your DNS</CardTitle>
+                <CardDescription>
+                  Make sure traffic reaches ZeroDrop before you add the site.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2 text-xs text-muted-foreground">
+                <div className="flex items-start gap-2">
+                  <span className="mt-1 size-1.5 rounded-full bg-primary" />
+                  <span>
+                    Point an A record to{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">
+                      74.248.232.187
+                    </code>
+                    .
+                  </span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="mt-1 size-1.5 rounded-full bg-primary" />
+                  <span>
+                    If you use Cloudflare, set Proxy status to DNS only (gray cloud).
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="domain-input">Domain</FieldLabel>
