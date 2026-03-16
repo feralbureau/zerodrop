@@ -217,7 +217,6 @@ def _build_domain_route(domain: str, origin: str, api_key: str) -> dict:
     if transport:
         reverse_proxy["transport"] = transport
     return {
-        "id": f"waf.{domain}",
         "match": [{"host": [domain]}],
         "handle": [
             {
