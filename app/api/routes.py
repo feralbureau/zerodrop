@@ -196,7 +196,7 @@ def _build_caddy_config(api_key: str | None, origin: str | None) -> dict:
         "apps": {
             "http": {
                 "servers": {
-                    "app": {"listen": [":81"], "routes": app_routes},
+                    "app": {"listen": [":8080"], "routes": app_routes},
                 }
             }
         }
