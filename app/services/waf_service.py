@@ -201,6 +201,27 @@ def _is_malicious_value(value: str) -> bool:
     return False
 
 
+def _extract_country(headers: Optional[Mapping[str, str]]) -> Optional[str]:
+    if not headers:
+        return None
+    candidates = (
+        "x-country",
+        "cf-ipcountry",
+        "x-geo-country",
+        "x-vercel-ip-country",
+        "x-forwarded-country",
+        "x-country-code",
+        "x-geoip-country",
+        "x-geoip-country-code",
+        "x-countrycode",
+    )
+    for key in candidates:
+        value = headers.get(key)
+        if value:
+            return value
+    return None
+
+
 async def check_ip(
     redis: Redis,
     ip: str,
@@ -240,15 +261,12 @@ async def check_ip(
             if ua and await redis.sismember("deny:ua", ua):
                 await _log_event(redis, ip, action="block", reason="denylist_ua", ua=ua)
                 return False, "denylist_ua"
-            country = (
-                headers.get("x-country")
-                or headers.get("cf-ipcountry")
-                or headers.get("x-geo-country")
-                or headers.get("x-vercel-ip-country")
-            )
+            country = _extract_country(headers)
             if country:
                 normalized = country.strip().upper()
-                if await redis.sismember("deny:country", normalized):
+                if await redis.sismember("deny:country", normalized) or await redis.sismember(
+                    "deny:country", normalized.lower()
+                ):
                     await _log_event(redis, ip, action="block", reason="denylist_country", country=normalized)
                     return False, "denylist_country"
     except Exception:

@@ -183,6 +183,13 @@ def _normalize_origin(value: str) -> str:
     return raw
 
 
+def _normalize_denylist_value(item: DenyListItem) -> str:
+    value = item.value.strip()
+    if item.type == "country":
+        return value.upper()
+    return value
+
+
 async def _list_domains(redis: Redis) -> list[dict]:
     raw = await redis.hgetall("waf:domains")
     items = []
@@ -727,10 +734,13 @@ async def add_denylist(request: Request, item: DenyListItem, _=Depends(api_key_r
     redis: Redis = request.app.state.redis
     if item.type not in ("ua", "country"):
         raise HTTPException(status_code=400, detail="type must be 'ua' or 'country'")
+    value = _normalize_denylist_value(item)
+    if not value:
+        raise HTTPException(status_code=400, detail="value required")
     try:
         key = f"deny:{item.type}"
-        await redis.sadd(key, item.value)
-        return JSONResponse({"added": True, "type": item.type, "value": item.value})
+        await redis.sadd(key, value)
+        return JSONResponse({"added": True, "type": item.type, "value": value})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -740,10 +750,13 @@ async def remove_denylist(request: Request, item: DenyListItem, _=Depends(api_ke
     redis: Redis = request.app.state.redis
     if item.type not in ("ua", "country"):
         raise HTTPException(status_code=400, detail="type must be 'ua' or 'country'")
+    value = _normalize_denylist_value(item)
+    if not value:
+        raise HTTPException(status_code=400, detail="value required")
     try:
         key = f"deny:{item.type}"
-        removed = await redis.srem(key, item.value)
-        return JSONResponse({"removed": True if removed else False, "type": item.type, "value": item.value})
+        removed = await redis.srem(key, value)
+        return JSONResponse({"removed": True if removed else False, "type": item.type, "value": value})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

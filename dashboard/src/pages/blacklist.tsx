@@ -35,9 +35,11 @@ import { Download, MoreHorizontal, Unlock } from "lucide-react"
 
 import { useNow } from "@/hooks/use-now"
 import { useWafLogs } from "@/hooks/use-waf-logs"
+import { useDenylist } from "@/hooks/use-denylist"
 
 export function Blacklist() {
   const { blacklist, events, unban, extendBan } = useWafLogs()
+  const { denylist, removeEntry: removeDeny } = useDenylist()
   const now = useNow()
   const [filterSeverity, setFilterSeverity] = useState<"all" | "critical">("all")
   const [filterWindow, setFilterWindow] = useState<"all" | "hour">("all")
@@ -70,12 +72,16 @@ export function Blacklist() {
         ipEvents.find((event) => event.reason && event.reason !== "already_blacklisted") ??
         latest
       const reason = reasonEvent?.reason ?? "blacklisted"
+      const userAgent = reasonEvent?.ua ?? latest?.ua ?? null
+      const country = reasonEvent?.country ?? latest?.country ?? null
       const hits = ipEvents.length
       const lastSeenTs = latest?.ts ?? null
       return {
         ip: entry.ip,
         reason: reasonLabel(reason).title,
         severity: reasonLabel(reason).severity,
+        userAgent,
+        country,
         hits: hits || 1,
         lastSeen: lastSeenTs ? formatRelativeTime(lastSeenTs, now) : formatTtl(entry.ttl),
         lastSeenTs,
@@ -164,6 +170,53 @@ export function Blacklist() {
         </Card>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="gap-2">
+            <CardTitle className="text-sm font-medium">Denied countries</CardTitle>
+            <CardDescription>Requests blocked by country code</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {denylist.country.length ? (
+              denylist.country.map((entry) => (
+                <Button
+                  key={entry}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => removeDeny("country", entry)}
+                >
+                  {entry}
+                </Button>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">No entries</span>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="gap-2">
+            <CardTitle className="text-sm font-medium">Denied user agents</CardTitle>
+            <CardDescription>Requests blocked by agent string</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {denylist.ua.length ? (
+              denylist.ua.map((entry) => (
+                <Button
+                  key={entry}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => removeDeny("ua", entry)}
+                >
+                  {entry}
+                </Button>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">No entries</span>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader className="flex-row items-center justify-between gap-3">
           <div>
@@ -225,6 +278,7 @@ export function Blacklist() {
               <TableRow>
                 <TableHead>IP Address</TableHead>
                 <TableHead>Reason</TableHead>
+                <TableHead>User Agent</TableHead>
                 <TableHead>Severity</TableHead>
                 <TableHead className="text-right">Hits</TableHead>
                 <TableHead>Last Seen</TableHead>
@@ -236,6 +290,9 @@ export function Blacklist() {
                 <TableRow key={entry.ip}>
                   <TableCell className="font-medium">{entry.ip}</TableCell>
                   <TableCell>{entry.reason}</TableCell>
+                  <TableCell className="max-w-[280px] truncate">
+                    {entry.userAgent || "—"}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant={
@@ -311,6 +368,18 @@ export function Blacklist() {
                 <span className="text-muted-foreground">IP address</span>
                 <span className="font-medium">{selectedRow.ip}</span>
               </div>
+              {selectedRow.userAgent ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">User agent</span>
+                  <span className="font-medium">{selectedRow.userAgent}</span>
+                </div>
+              ) : null}
+              {selectedRow.country ? (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Country</span>
+                  <span className="font-medium">{selectedRow.country}</span>
+                </div>
+              ) : null}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Reason</span>
                 <span className="font-medium">{selectedRow.reason}</span>

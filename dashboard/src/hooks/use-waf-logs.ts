@@ -16,6 +16,8 @@ type WafLogEvent = {
   reason?: string
   path?: string
   method?: string
+  ua?: string
+  country?: string
   ts: number
 }
 
@@ -245,6 +247,8 @@ function parseLogEntry(id: string, fields: Record<string, string>): WafLogEvent 
     reason: fields.reason,
     path: fields.path,
     method: fields.method,
+    ua: fields.ua,
+    country: fields.country,
     ts: Number(tsPart),
   }
 }
