@@ -245,12 +245,24 @@ async def _fetch_caddy_routes(admin_url: str) -> list[dict]:
 async def _write_caddy_routes(admin_url: str, routes: list[dict]) -> None:
     server_id = await _get_caddy_server_id(admin_url)
     async with httpx.AsyncClient() as client:
-        response = await client.put(
-            f"{admin_url}/config/apps/http/servers/{server_id}/routes",
-            json=routes,
-            timeout=8.0,
-        )
-        response.raise_for_status()
+        try:
+            response = await client.put(
+                f"{admin_url}/config/apps/http/servers/{server_id}/routes",
+                json=routes,
+                timeout=8.0,
+            )
+            response.raise_for_status()
+            return
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 409:
+                raise
+    config = await _get_caddy_config(admin_url)
+    servers = config.get("apps", {}).get("http", {}).get("servers", {})
+    if not servers:
+        raise ValueError("no caddy servers found")
+    server_key = server_id if server_id in servers else next(iter(servers.keys()))
+    servers[server_key]["routes"] = routes
+    await _load_caddy_config(admin_url, config)
 
 
 async def _reconcile_caddy_routes(redis: Redis, api_key: str) -> None:
@@ -300,6 +312,23 @@ async def _get_caddy_server_id(admin_url: str) -> str:
     if not data:
         raise ValueError("no caddy servers found")
     return next(iter(data.keys()))
+
+
+async def _get_caddy_config(admin_url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{admin_url}/config/", timeout=8.0)
+        response.raise_for_status()
+        return response.json()
+
+
+async def _load_caddy_config(admin_url: str, config: dict) -> None:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{admin_url}/load",
+            json=config,
+            timeout=8.0,
+        )
+        response.raise_for_status()
 
 
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
