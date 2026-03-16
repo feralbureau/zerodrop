@@ -231,19 +231,22 @@ def _build_domain_route(domain: str, origin: str, api_key: str) -> dict:
 
 
 async def _fetch_caddy_routes(admin_url: str) -> list[dict]:
+    server_id = await _get_caddy_server_id(admin_url)
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            f"{admin_url}/config/apps/http/servers/srv0/routes",
+            f"{admin_url}/config/apps/http/servers/{server_id}/routes",
             timeout=8.0,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        return data or []
 
 
 async def _write_caddy_routes(admin_url: str, routes: list[dict]) -> None:
+    server_id = await _get_caddy_server_id(admin_url)
     async with httpx.AsyncClient() as client:
         response = await client.put(
-            f"{admin_url}/config/apps/http/servers/srv0/routes",
+            f"{admin_url}/config/apps/http/servers/{server_id}/routes",
             json=routes,
             timeout=8.0,
         )
@@ -270,13 +273,8 @@ async def _reconcile_caddy_routes(redis: Redis, api_key: str) -> None:
 async def _add_caddy_route(domain: str, origin: str, api_key: str) -> None:
     admin_url = os.getenv("CADDY_ADMIN_URL", "http://caddy:2019")
     route = _build_domain_route(domain, origin, api_key)
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{admin_url}/config/apps/http/servers/srv0/routes",
-            json=route,
-            timeout=8.0,
-        )
-        response.raise_for_status()
+    existing = await _fetch_caddy_routes(admin_url)
+    await _write_caddy_routes(admin_url, existing + [route])
     logger.info("caddy route added domain=%s", domain)
 
 
@@ -289,6 +287,19 @@ async def _clear_caddy_routes() -> None:
         if not str(route.get("id", "")).startswith("waf.")
     ]
     await _write_caddy_routes(admin_url, preserved)
+
+
+async def _get_caddy_server_id(admin_url: str) -> str:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{admin_url}/config/apps/http/servers",
+            timeout=8.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+    if not data:
+        raise ValueError("no caddy servers found")
+    return next(iter(data.keys()))
 
 
 async def _is_ws_authorized(socket: WebSocket, redis: Redis) -> bool:
