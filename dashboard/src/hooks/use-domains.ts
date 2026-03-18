@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 export type DomainEntry = {
   domain: string
@@ -25,7 +25,7 @@ export function useDomains(): UseDomainsResult {
   const mountedRef = useRef(true)
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -44,7 +44,7 @@ export function useDomains(): UseDomainsResult {
     }
     setIsLoading(true)
     try {
-      const res = await apiFetch(`${apiBase}/api/domains`, {
+      const res = await apiFetch(`${apiRoot}/domains`, {
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
       if (!res.ok) {
@@ -64,7 +64,7 @@ export function useDomains(): UseDomainsResult {
         setIsLoading(false)
       }
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     refresh()
@@ -76,7 +76,7 @@ export function useDomains(): UseDomainsResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/domains`, {
+        const res = await apiFetch(`${apiRoot}/domains`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -102,7 +102,7 @@ export function useDomains(): UseDomainsResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   const removeDomain = useCallback(
@@ -111,7 +111,7 @@ export function useDomains(): UseDomainsResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/domains/${encodeURIComponent(domain)}`, {
+        const res = await apiFetch(`${apiRoot}/domains/${encodeURIComponent(domain)}`, {
           method: "DELETE",
           headers: apiKey ? { "X-API-Key": apiKey } : undefined,
         })
@@ -130,7 +130,7 @@ export function useDomains(): UseDomainsResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   return {

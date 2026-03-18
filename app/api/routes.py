@@ -242,6 +242,10 @@ def _build_caddy_config(api_key: str | None, domains: list[dict]) -> str:
     forward_auth api:8000 {{
         uri /api/check?api_key={api_key}
         copy_headers X-WAF-Reason
+        @waf_block status 403
+        handle_response @waf_block {{
+            abort
+        }}
     }}
     reverse_proxy {origin_host}:{port} {{
         header_up Host {origin_host}
@@ -439,23 +443,16 @@ async def check_request(request: Request, _=Depends(api_key_required)) -> Respon
             body=body,
         )
         if allowed:
-            resp_body = WafCheckResponse(allowed=True, reason=reason).json()
             return Response(
-                content=resp_body,
-                media_type="application/json",
                 status_code=200,
                 headers={"X-WAF-Reason": reason or "allowed"},
             )
-        resp_body = WafCheckResponse(allowed=False, reason=reason).json()
         return Response(
-            content=resp_body,
-            media_type="application/json",
             status_code=403,
             headers={"X-WAF-Reason": reason or "blocked"},
         )
     except Exception:
-        body = WafCheckResponse(allowed=True, reason="redis_error").json()
-        return Response(content=body, media_type="application/json", status_code=200)
+        return Response(status_code=200, headers={"X-WAF-Reason": "redis_error"})
 
 
 @router.post("/unban")
@@ -627,6 +624,9 @@ async def add_uptime(request: Request, payload: UptimeCreate, _=Depends(api_key_
             "check_type": check_type,
             "success_codes": success_codes if check_type == "http" else "",
             "history": "[]",
+            "latency_history": "[]",
+            "checked_at_history": "[]",
+            "last_latency": "",
         },
     )
     await redis.sadd("uptime:monitors", monitor_id)
@@ -677,6 +677,13 @@ async def stream_logs(socket: WebSocket) -> None:
             await socket.close(code=1011)
         except Exception:
             return
+
+
+@router.websocket("/ws/ping")
+async def ping(socket: WebSocket) -> None:
+    await socket.accept()
+    await socket.send_text("pong")
+    await socket.close()
 
 
 @router.websocket("/ws/uptime")

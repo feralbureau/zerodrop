@@ -1,10 +1,15 @@
-export function getApiBase() {
-  const envBase = import.meta.env.VITE_API_BASE_URL
-  if (envBase) {
-    return envBase.replace(/\/+$/, "")
+export function getApiRoot() {
+  const envBase = import.meta.env.VITE_API_BASE_URL?.trim()
+  const base =
+    envBase && envBase.length > 0
+      ? envBase
+      : typeof window !== "undefined"
+        ? window.location.origin
+        : "http://localhost:8000"
+
+  const normalized = base.replace(/\/+$/, "")
+  if (normalized.endsWith("/api")) {
+    return normalized
   }
-  if (typeof window !== "undefined") {
-    return window.location.origin
-  }
-  return "http://localhost:8000"
+  return `${normalized}/api`
 }

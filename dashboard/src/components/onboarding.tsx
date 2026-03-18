@@ -31,10 +31,11 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/field"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useProfile } from "@/hooks/use-profile"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 type OnboardingDialogProps = {
   open: boolean
+  apiConfigured: boolean
 }
 
 const steps = [
@@ -44,7 +45,7 @@ const steps = [
   { id: "finish", title: "Save your API key" },
 ]
 
-export function OnboardingDialog({ open }: OnboardingDialogProps) {
+export function OnboardingDialog({ open, apiConfigured }: OnboardingDialogProps) {
   const { setApiKey } = useApiKey()
   const { profile } = useProfile()
   const [step, setStep] = useState(0)
@@ -62,7 +63,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   const [origin, setOrigin] = useState("")
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   const initials = useMemo(() => {
     const parts = nickname.trim().split(/\s+/).filter(Boolean)
@@ -74,6 +75,9 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   const isDomainReady = Boolean(domain.trim() && origin.trim())
 
   const handleGenerateKey = () => {
+    if (apiConfigured) {
+      return
+    }
     const key = createApiKey()
     setGeneratedKey(key)
     setSelectedKey(key)
@@ -85,10 +89,17 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
   const handleUseKey = async () => {
     const trimmed = manualKey.trim()
     if (!trimmed) return
+    if (!apiConfigured) {
+      setSelectedKey(trimmed)
+      setGeneratedKey("")
+      setIsExistingKey(false)
+      setKeyError("")
+      return
+    }
     setIsValidating(true)
     setKeyError("")
     try {
-      const res = await fetch(`${apiBase}/api/key/validate`, {
+      const res = await fetch(`${apiRoot}/key/validate`, {
         headers: { "X-API-Key": trimmed },
       })
       const data = await res.json()
@@ -139,7 +150,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
     window.dispatchEvent(new Event("waf-profile-sync"))
     try {
       if (isExistingKey) {
-        await fetch(`${apiBase}/api/domains`, {
+        await fetch(`${apiRoot}/domains`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -150,7 +161,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
             origin: origin.trim(),
           }),
         })
-        await fetch(`${apiBase}/api/settings`, {
+        await fetch(`${apiRoot}/settings`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -161,7 +172,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
           }),
         })
       } else {
-        await fetch(`${apiBase}/api/setup`, {
+        await fetch(`${apiRoot}/setup`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -191,7 +202,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
         <DialogHeader>
           <DialogTitle>Welcome to ZeroDrop Console</DialogTitle>
           <DialogDescription>
-            Connect your WAF, personalize the dashboard, and keep your key safe.
+            Connect your WAF, connect services, and keep your key secure.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
@@ -212,7 +223,7 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                   <CardHeader>
                     <CardTitle>Use an existing API key</CardTitle>
                     <CardDescription>
-                      Or enter your API key to continue without generating a new one.
+                      If you've already set up the dashboard, you can simply log in with your token.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
@@ -246,14 +257,19 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                   <CardHeader>
                     <CardTitle>Generate a fresh key</CardTitle>
                     <CardDescription>
-                      Create a new key if you do not have one yet.
+                      Create a new key if it's your first time here
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="flex flex-col gap-3">
-                    <Button variant="outline" onClick={handleGenerateKey}>
+                    <Button variant="outline" onClick={handleGenerateKey} disabled={apiConfigured}>
                       <Sparkles data-icon="inline-start" />
                       Generate key
                     </Button>
+                    {apiConfigured ? (
+                      <p className="text-xs text-muted-foreground">
+                        A key is already configured on the server.
+                      </p>
+                    ) : null}
                     {generatedKey ? (
                       <div className="flex flex-col gap-2">
                         <Input value={generatedKey} readOnly />
@@ -276,12 +292,9 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
               <div className="flex justify-end gap-2">
                 <Button
                   onClick={() => {
-                    const nextKey = selectedKey || manualKey.trim()
-                    if (!nextKey) return
-                    setSelectedKey(nextKey)
                     setStep(1)
                   }}
-                  disabled={!selectedKey && !manualKey.trim()}
+                  disabled={!selectedKey}
                 >
                   Continue
                 </Button>
@@ -338,9 +351,6 @@ export function OnboardingDialog({ open }: OnboardingDialogProps) {
                           value={nickname}
                           onChange={(event) => setNickname(event.target.value)}
                         />
-                        <FieldDescription>
-                          We use this on the sidebar, reports, and notifications.
-                        </FieldDescription>
                       </Field>
                     </FieldGroup>
                   </CardContent>

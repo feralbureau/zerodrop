@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 export type WafSettingKey =
   | "allowlist_enabled"
@@ -35,7 +35,7 @@ function ensureCacheKey(nextKey: string) {
   }
 }
 
-async function fetchSettings(apiBase: string, apiKey: string, apiFetch: typeof fetch) {
+async function fetchSettings(apiRoot: string, apiKey: string, apiFetch: typeof fetch) {
   if (!apiKey) {
     cache = null
     notify()
@@ -43,7 +43,7 @@ async function fetchSettings(apiBase: string, apiKey: string, apiFetch: typeof f
   }
   if (inflight) return inflight
   inflight = (async () => {
-    const res = await apiFetch(`${apiBase}/api/settings`, {
+    const res = await apiFetch(`${apiRoot}/settings`, {
       headers: apiKey ? { "X-API-Key": apiKey } : undefined,
     })
     const data = await res.json()
@@ -57,7 +57,7 @@ async function fetchSettings(apiBase: string, apiKey: string, apiFetch: typeof f
 }
 
 export function useWafSettings() {
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
   const [settings, setSettings] = useState<SettingsState>(cache)
@@ -69,12 +69,12 @@ export function useWafSettings() {
     listeners.add(handleChange)
     handleChange()
     if (!cache) {
-      fetchSettings(apiBase, apiKey, apiFetch).catch(() => undefined)
+      fetchSettings(apiRoot, apiKey, apiFetch).catch(() => undefined)
     }
     return () => {
       listeners.delete(handleChange)
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     const onSettingsSync = () => setSettings(cache)
@@ -86,8 +86,8 @@ export function useWafSettings() {
 
   const refresh = useCallback(async () => {
     ensureCacheKey(apiKey)
-    await fetchSettings(apiBase, apiKey, apiFetch)
-  }, [apiBase, apiFetch, apiKey])
+    await fetchSettings(apiRoot, apiKey, apiFetch)
+  }, [apiRoot, apiFetch, apiKey])
 
   const updateSettings = useCallback(
     async (payload: Partial<Record<WafSettingKey, boolean>>, savingKey?: string) => {
@@ -100,7 +100,7 @@ export function useWafSettings() {
         return
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/settings`, {
+        const res = await apiFetch(`${apiRoot}/settings`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -123,7 +123,7 @@ export function useWafSettings() {
         setIsSaving(null)
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   const updateSetting = useCallback(

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 type Profile = {
   nickname: string
@@ -54,7 +54,7 @@ export function useProfile(): UseProfileResult {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
 
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -70,7 +70,7 @@ export function useProfile(): UseProfileResult {
       }
       return
     }
-    const res = await apiFetch(`${apiBase}/api/settings`, {
+    const res = await apiFetch(`${apiRoot}/settings`, {
       headers: apiKey ? { "X-API-Key": apiKey } : undefined,
     })
     const data = await res.json()
@@ -79,7 +79,7 @@ export function useProfile(): UseProfileResult {
       setProfile(next)
       storeProfile(next)
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     refresh()
@@ -109,7 +109,7 @@ export function useProfile(): UseProfileResult {
         return
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/settings`, {
+        const res = await apiFetch(`${apiRoot}/settings`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -129,7 +129,7 @@ export function useProfile(): UseProfileResult {
         }
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   return { profile, isSaving, refresh, updateProfile }

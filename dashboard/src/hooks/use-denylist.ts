@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 type DenylistData = {
   ua: string[]
@@ -26,7 +26,7 @@ export function useDenylist(): UseDenylistResult {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
 
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -45,7 +45,7 @@ export function useDenylist(): UseDenylistResult {
     }
     setIsLoading(true)
     try {
-      const res = await apiFetch(`${apiBase}/api/denylist`, {
+      const res = await apiFetch(`${apiRoot}/denylist`, {
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
       if (!res.ok) {
@@ -68,7 +68,7 @@ export function useDenylist(): UseDenylistResult {
         setIsLoading(false)
       }
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     loadDenylist()
@@ -80,7 +80,7 @@ export function useDenylist(): UseDenylistResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/denylist`, {
+        const res = await apiFetch(`${apiRoot}/denylist`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -106,7 +106,7 @@ export function useDenylist(): UseDenylistResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   const removeEntry = useCallback(
@@ -115,7 +115,7 @@ export function useDenylist(): UseDenylistResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/denylist/remove`, {
+        const res = await apiFetch(`${apiRoot}/denylist/remove`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -141,7 +141,7 @@ export function useDenylist(): UseDenylistResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   return {

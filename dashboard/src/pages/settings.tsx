@@ -23,13 +23,13 @@ import { useNavigate } from "react-router-dom"
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
 import { useWafSettings, type WafSettingKey } from "@/hooks/use-waf-settings"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 export function Settings() {
   const { settings, refresh, updateSetting, updateSettings, isSaving } = useWafSettings()
   const { setApiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
   const [isResetting, setIsResetting] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [generatedKey, setGeneratedKey] = useState("")
@@ -129,7 +129,7 @@ export function Settings() {
               onClick={async () => {
                 setIsRegenerating(true)
                 try {
-                  const res = await apiFetch(`${apiBase}/api/key/regenerate`, {
+                  const res = await apiFetch(`${apiRoot}/key/regenerate`, {
                     method: "POST",
                   })
                   const data = await res.json()
@@ -152,7 +152,7 @@ export function Settings() {
               onClick={async () => {
                 setIsResetting(true)
                 try {
-                  await apiFetch(`${apiBase}/api/reset`, { method: "POST" })
+                  await apiFetch(`${apiRoot}/reset`, { method: "POST" })
                   setApiKey("")
                   window.location.reload()
                 } finally {
@@ -172,7 +172,7 @@ export function Settings() {
               </label>
               <Input id="new-key" value={generatedKey} readOnly />
               <p className="text-xs text-muted-foreground">
-                Save this key; it has already been applied to Caddy.
+                Save this key; it has already been applied.
               </p>
             </div>
           ) : null}

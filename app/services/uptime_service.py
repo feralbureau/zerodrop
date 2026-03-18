@@ -35,6 +35,30 @@ def _parse_history(raw: str) -> list[int]:
     return []
 
 
+def _parse_checked_at_history(raw: str) -> list[int]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [int(item) for item in parsed][-HISTORY_LIMIT:]
+    except Exception:
+        return []
+    return []
+
+
+def _parse_latency_history(raw: str) -> list[int]:
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [int(item) for item in parsed][-HISTORY_LIMIT:]
+    except Exception:
+        return []
+    return []
+
+
 def _parse_success_codes(raw: str) -> set[int]:
     if not raw:
         return set()
@@ -73,7 +97,12 @@ async def list_monitors(redis: Redis) -> list[dict]:
         check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
         success_codes = _decode(data.get(b"success_codes") or data.get("success_codes"))
         history = _parse_history(_decode(data.get(b"history") or data.get("history")))
+        latency_history = _parse_latency_history(_decode(data.get(b"latency_history") or data.get("latency_history")))
+        checked_at_history = _parse_checked_at_history(
+            _decode(data.get(b"checked_at_history") or data.get("checked_at_history"))
+        )
         last_status = _decode(data.get(b"last_status") or data.get("last_status"))
+        last_latency = _decode(data.get(b"last_latency") or data.get("last_latency"))
         checked_at = _decode(data.get(b"checked_at") or data.get("checked_at"))
         items.append(
             {
@@ -83,27 +112,34 @@ async def list_monitors(redis: Redis) -> list[dict]:
                 "check_type": check_type,
                 "success_codes": success_codes,
                 "history": history,
+                "latency_history": latency_history,
+                "checked_at_history": checked_at_history,
                 "last_status": int(last_status) if last_status else None,
+                "last_latency": int(last_latency) if last_latency else None,
                 "checked_at": int(checked_at) if checked_at else None,
             }
         )
     return items
 
 
-async def _check_http(client: httpx.AsyncClient, url: str, success_codes: set[int]) -> bool:
+async def _check_http(client: httpx.AsyncClient, url: str, success_codes: set[int]) -> tuple[bool, int]:
     try:
+        start = time.perf_counter()
         resp = await client.get(url, timeout=6.0, follow_redirects=True)
-        return resp.status_code in success_codes
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return resp.status_code in success_codes, latency_ms
     except Exception:
-        return False
+        return False, -1
 
 
-async def _check_tcp(host: str, port: int) -> bool:
+async def _check_tcp(host: str, port: int) -> tuple[bool, int]:
     try:
+        start = time.perf_counter()
         await asyncio.wait_for(asyncio.open_connection(host, port), timeout=3.5)
-        return True
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return True, latency_ms
     except Exception:
-        return False
+        return False, -1
 
 
 async def _broadcast(app, payload: dict) -> None:
@@ -131,13 +167,15 @@ async def check_and_update(redis: Redis, monitor_id: str, client: httpx.AsyncCli
     if not url:
         return None
     status = 0
+    latency_ms = -1
     normalized_url = url
     if check_type == "tcp":
         parsed = urlparse(url if "://" in url else f"tcp://{url}")
         if not parsed.hostname:
             return None
         port = parsed.port or 443
-        status = 1 if await _check_tcp(parsed.hostname, port) else 0
+        ok, latency_ms = await _check_tcp(parsed.hostname, port)
+        status = 1 if ok else 0
     else:
         if "://" not in url:
             normalized_url = f"https://{url}"
@@ -148,23 +186,39 @@ async def check_and_update(redis: Redis, monitor_id: str, client: httpx.AsyncCli
             success_codes = _parse_success_codes(success_raw) or DEFAULT_CODES
         except ValueError:
             success_codes = DEFAULT_CODES
-        status = 1 if await _check_http(client, normalized_url, success_codes) else 0
+        ok, latency_ms = await _check_http(client, normalized_url, success_codes)
+        status = 1 if ok else 0
     history = _parse_history(_decode(data.get(b"history") or data.get("history")))
+    latency_history = _parse_latency_history(_decode(data.get(b"latency_history") or data.get("latency_history")))
+    checked_at_history = _parse_checked_at_history(
+        _decode(data.get(b"checked_at_history") or data.get("checked_at_history"))
+    )
     history.append(status)
     history = history[-HISTORY_LIMIT:]
+    latency_history.append(latency_ms)
+    latency_history = latency_history[-HISTORY_LIMIT:]
     checked_at = int(time.time())
+    checked_at_history.append(checked_at)
+    checked_at_history = checked_at_history[-HISTORY_LIMIT:]
     updates = {
         "history": json.dumps(history),
+        "latency_history": json.dumps(latency_history),
+        "checked_at_history": json.dumps(checked_at_history),
         "last_status": str(status),
         "checked_at": str(checked_at),
     }
+    if latency_ms >= 0:
+        updates["last_latency"] = str(latency_ms)
     if normalized_url != url:
         updates["url"] = normalized_url
     await redis.hset(key, mapping=updates)
     payload = {
         "id": monitor_id,
         "history": history,
+        "latency_history": latency_history,
+        "checked_at_history": checked_at_history,
         "last_status": status,
+        "last_latency": latency_ms if latency_ms >= 0 else None,
         "checked_at": checked_at,
     }
     if app is not None:

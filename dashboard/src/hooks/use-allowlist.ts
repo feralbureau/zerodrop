@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 type AllowlistData = {
   ip: string[]
@@ -26,7 +26,7 @@ export function useAllowlist(): UseAllowlistResult {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
 
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -45,7 +45,7 @@ export function useAllowlist(): UseAllowlistResult {
     }
     setIsLoading(true)
     try {
-      const res = await apiFetch(`${apiBase}/api/allowlist`, {
+      const res = await apiFetch(`${apiRoot}/allowlist`, {
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
       if (!res.ok) {
@@ -68,7 +68,7 @@ export function useAllowlist(): UseAllowlistResult {
         setIsLoading(false)
       }
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     loadAllowlist()
@@ -80,7 +80,7 @@ export function useAllowlist(): UseAllowlistResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/allowlist`, {
+        const res = await apiFetch(`${apiRoot}/allowlist`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -106,7 +106,7 @@ export function useAllowlist(): UseAllowlistResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   const removeEntry = useCallback(
@@ -115,7 +115,7 @@ export function useAllowlist(): UseAllowlistResult {
         return false
       }
       try {
-        const res = await apiFetch(`${apiBase}/api/allowlist/remove`, {
+        const res = await apiFetch(`${apiRoot}/allowlist/remove`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -141,7 +141,7 @@ export function useAllowlist(): UseAllowlistResult {
         return false
       }
     },
-    [apiBase, apiFetch, apiKey]
+    [apiRoot, apiFetch, apiKey]
   )
 
   return {

@@ -222,7 +222,7 @@ export function Blacklist() {
           <div>
             <CardTitle>Blocked IPs</CardTitle>
             <CardDescription>
-              Review banned addresses and revoke access if needed
+              Review banned addresses and unban if needed
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">

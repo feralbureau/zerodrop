@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import { useAuthedFetch } from "@/hooks/use-authed-fetch"
 import { useApiKey } from "@/hooks/use-api-key"
-import { getApiBase } from "@/lib/api-base"
+import { getApiRoot } from "@/lib/api-base"
 
 type BlacklistItem = {
   ip: string
@@ -43,7 +43,7 @@ export function useWafLogs(): UseWafLogsResult {
   const { apiKey } = useApiKey()
   const apiFetch = useAuthedFetch()
 
-  const apiBase = useMemo(() => getApiBase(), [])
+  const apiRoot = useMemo(() => getApiRoot(), [])
 
   useEffect(() => {
     mountedRef.current = true
@@ -60,7 +60,7 @@ export function useWafLogs(): UseWafLogsResult {
       return
     }
     try {
-      const res = await apiFetch(`${apiBase}/api/blacklist`, {
+      const res = await apiFetch(`${apiRoot}/blacklist`, {
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
       if (!res.ok) {
@@ -76,7 +76,7 @@ export function useWafLogs(): UseWafLogsResult {
         setError(err instanceof Error ? err.message : "blacklist request failed")
       }
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   const loadLogs = useCallback(async () => {
     if (!apiKey) {
@@ -86,7 +86,7 @@ export function useWafLogs(): UseWafLogsResult {
       return
     }
     try {
-      const res = await apiFetch(`${apiBase}/api/logs?limit=0&action=block`, {
+      const res = await apiFetch(`${apiRoot}/logs?limit=0&action=block`, {
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
       if (!res.ok) {
@@ -106,7 +106,7 @@ export function useWafLogs(): UseWafLogsResult {
         setError(err instanceof Error ? err.message : "logs request failed")
       }
     }
-  }, [apiBase, apiFetch, apiKey])
+  }, [apiRoot, apiFetch, apiKey])
 
   useEffect(() => {
     loadBlacklist()
@@ -123,15 +123,9 @@ export function useWafLogs(): UseWafLogsResult {
       }
       return
     }
-    const protocol =
-      apiBase.startsWith("https://") || window.location.protocol === "https:"
-        ? "wss"
-        : "ws"
-    const host = apiBase
-      ? apiBase.replace(/^https?:\/\//, "")
-      : window.location.host
+    const wsBase = apiRoot.replace(/^http/, "ws")
     const query = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : ""
-    const wsUrl = `${protocol}://${host}/api/ws/logs${query}`
+    const wsUrl = `${wsBase}/ws/logs${query}`
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -173,7 +167,7 @@ export function useWafLogs(): UseWafLogsResult {
       ws.close()
       wsRef.current = null
     }
-  }, [apiBase, apiKey])
+  }, [apiRoot, apiKey])
 
   const refresh = useCallback(async () => {
     setError(null)
@@ -185,7 +179,7 @@ export function useWafLogs(): UseWafLogsResult {
 
   const unban = async (ip: string) => {
     try {
-      const res = await apiFetch(`${apiBase}/api/unban?ip=${encodeURIComponent(ip)}`, {
+      const res = await apiFetch(`${apiRoot}/unban?ip=${encodeURIComponent(ip)}`, {
         method: "POST",
         headers: apiKey ? { "X-API-Key": apiKey } : undefined,
       })
@@ -206,7 +200,7 @@ export function useWafLogs(): UseWafLogsResult {
   const extendBan = async (ip: string, minutes: number) => {
     try {
       const res = await apiFetch(
-        `${apiBase}/api/ban/extend?ip=${encodeURIComponent(ip)}&minutes=${encodeURIComponent(
+        `${apiRoot}/ban/extend?ip=${encodeURIComponent(ip)}&minutes=${encodeURIComponent(
           minutes
         )}`,
         {

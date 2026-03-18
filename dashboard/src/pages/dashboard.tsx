@@ -16,6 +16,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@workspace/ui/components/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { Input } from "@workspace/ui/components/input"
 import {
   ChartContainer,
@@ -38,12 +44,19 @@ import {
   TabsList,
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
-import { useMemo, useRef, useState } from "react"
-import { ArrowUpRight, RefreshCw, ShieldBan, Siren, Zap } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ArrowUpRight, RefreshCw, Siren, Zap } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
 import { useNow } from "@/hooks/use-now"
+import { useUptime } from "@/hooks/use-uptime"
 import { useWafLogs } from "@/hooks/use-waf-logs"
+import { cn } from "@workspace/ui/lib/utils"
 
 const trafficConfig = {
   blocked: {
@@ -52,11 +65,19 @@ const trafficConfig = {
   },
 } satisfies ChartConfig
 
+const latencyConfig = {
+  latency: {
+    label: "Latency (ms)",
+    color: "var(--chart-2)",
+  },
+} satisfies ChartConfig
+
 const BUCKET_HOURS = 4
 const BUCKETS = 6
 
 export function Dashboard() {
   const { events, blacklist, lastRefresh, refresh } = useWafLogs()
+  const { monitors } = useUptime()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const now = useNow()
   const since = now - 24 * 60 * 60 * 1000
@@ -64,7 +85,43 @@ export function Dashboard() {
   const [search, setSearch] = useState("")
   const [severity, setSeverity] = useState<"all" | "critical" | "high" | "medium" | "low">("all")
   const [pageSize, setPageSize] = useState(30)
+  const [activeTab, setActiveTab] = useState<"traffic" | "latency" | "anomalies">("traffic")
+  const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const hasUptimeMonitors = monitors.length > 0
+
+  useEffect(() => {
+    if (!hasUptimeMonitors) {
+      setSelectedMonitorId(null)
+      return
+    }
+    if (selectedMonitorId && monitors.some((monitor) => monitor.id === selectedMonitorId)) {
+      return
+    }
+    setSelectedMonitorId(monitors[0]?.id ?? null)
+  }, [hasUptimeMonitors, monitors, selectedMonitorId])
+
+  useEffect(() => {
+    if (!hasUptimeMonitors && activeTab === "latency") {
+      setActiveTab("traffic")
+    }
+  }, [activeTab, hasUptimeMonitors])
+
+  const selectedMonitor = useMemo(
+    () => monitors.find((monitor) => monitor.id === selectedMonitorId) ?? null,
+    [monitors, selectedMonitorId]
+  )
+
+  const latencyData = useMemo(() => {
+    const history = selectedMonitor?.latency_history ?? []
+    const timestamps = selectedMonitor?.checked_at_history ?? []
+    const size = Math.min(history.length, timestamps.length)
+    const sliceStart = history.length - size
+    return history.slice(sliceStart).map((value, index) => ({
+      ts: (timestamps[timestamps.length - size + index] ?? 0) * 1000,
+      latency: value >= 0 ? value : null,
+    }))
+  }, [selectedMonitor])
 
   const handleRefresh = async () => {
     if (isRefreshing) return
@@ -229,10 +286,6 @@ export function Dashboard() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <CardTitle>Threat Monitor</CardTitle>
-              <Badge variant="secondary">
-                <ShieldBan data-icon="inline-start" />
-                Auto-blocking
-              </Badge>
             </div>
             <div className="flex items-center gap-2">
               <Badge variant="outline">
@@ -249,10 +302,27 @@ export function Dashboard() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="traffic">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)}>
             <TabsList variant="line">
               <TabsTrigger value="traffic">Traffic</TabsTrigger>
-              <TabsTrigger value="latency">Latency</TabsTrigger>
+              {!hasUptimeMonitors ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-not-allowed">
+                      <TabsTrigger
+                        value="latency"
+                        disabled
+                        className={cn("text-muted-foreground")}
+                      >
+                        Latency
+                      </TabsTrigger>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Add an uptime monitor to unlock latency.</TooltipContent>
+                </Tooltip>
+              ) : (
+                <TabsTrigger value="latency">Latency</TabsTrigger>
+              )}
               <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
             </TabsList>
             <TabsContent value="traffic" className="mt-4">
@@ -343,14 +413,74 @@ export function Dashboard() {
             <TabsContent value="latency" className="mt-4">
               <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
                 <Card className="border-dashed">
-                  <CardHeader>
-                    <CardTitle>Latency Snapshot</CardTitle>
-                    <CardDescription>Telemetry not yet connected</CardDescription>
+                  <CardHeader className="gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <CardTitle>Latency Snapshot</CardTitle>
+                      {selectedMonitor ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm">
+                              {selectedMonitor.name || "Select monitor"}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {monitors.map((monitor) => (
+                              <DropdownMenuItem
+                                key={monitor.id}
+                                onClick={() => setSelectedMonitorId(monitor.id)}
+                              >
+                                {monitor.name || monitor.url || monitor.id}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : null}
+                    </div>
+                    <CardDescription>
+                      Latency over time for the selected monitor.
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-                      Waiting for latency metrics
-                    </div>
+                    {selectedMonitor && latencyData.length > 0 ? (
+                      <ChartContainer
+                        config={latencyConfig}
+                        className="h-[240px] w-full aspect-auto"
+                      >
+                        <AreaChart data={latencyData} margin={{ left: 12, right: 12 }}>
+                          <CartesianGrid vertical={false} />
+                          <XAxis
+                            dataKey="ts"
+                            tickLine={false}
+                            axisLine={false}
+                            tickMargin={8}
+                            tickFormatter={(value) =>
+                              value ? new Date(value as number).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }) : ""
+                            }
+                          />
+                          <ChartTooltip
+                            cursor={false}
+                            content={<ChartTooltipContent indicator="line" />}
+                          />
+                          <Area
+                            dataKey="latency"
+                            type="monotone"
+                            fill="var(--color-latency)"
+                            fillOpacity={0.35}
+                            stroke="var(--color-latency)"
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex h-[240px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                        {hasUptimeMonitors
+                          ? "Waiting for latency metrics"
+                          : "Add an uptime monitor to see latency."}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
@@ -414,7 +544,7 @@ export function Dashboard() {
               <DialogHeader>
                 <DialogTitle>All Requests</DialogTitle>
                 <DialogDescription>
-                  Live security actions with filters and search
+                  Live feed of malicious requests dropped
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-wrap items-center gap-3">

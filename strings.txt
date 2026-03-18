@@ -1,0 +1,30 @@
+Connect your WAF, personalize the dashboard, and keep your key secure.
+-> Connect your WAF, connect services, and keep your key secure.
+
+Or enter your API key to continue without generating a new one.
+-> If you've already set up the dashboard, you can simply log in with your token.
+
+Create a new key if you do not have one yet.
+-> Create a new key if it's your first time here
+
+We use this on the sidebar, reports, and notifications.
+-> remove
+
+
+Create an A record for your domain to 74.248.232.187.
+-> dont hardcode ip, get from api
+
+Apply quick allowlist or blacklist actions without leaving the dashboard.
+-> Apply quick allowlist or blacklist actions.
+
+Auto-blocking (badge)
+-> remove completely
+
+Live security actions with filters and search
+-> Live feed of malicious requests dropped
+
+Review banned addresses and revoke access if needed
+-> Review banned addresses and unban if needed
+
+Save this key; it has already been applied to Caddy.
+-> Save this key; it has already been applied.

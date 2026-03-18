@@ -13,6 +13,7 @@ from .core.config import settings
 from .core.redis import create_redis_client, close_redis_client
 from redis.asyncio.client import Redis
 from .services.uptime_service import run_uptime_loop
+from .api.routes import _apply_caddy_config, _get_api_key
 
 
 @asynccontextmanager
@@ -38,6 +39,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 	except Exception:
 		await close_redis_client(app.state.redis)
 		raise
+
+	# Re-apply Caddy config on startup so existing domains are proxied after restarts.
+	try:
+		existing_key = await _get_api_key(app.state.redis)
+		await _apply_caddy_config(app.state.redis, existing_key)
+	except Exception as exc:
+		logging.getLogger("waf").warning("caddy sync on startup failed: %s", exc)
 
 	app.state.uptime_clients = set()
 	app.state.uptime_task = asyncio.create_task(run_uptime_loop(app))
