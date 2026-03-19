@@ -61,7 +61,7 @@ Create a `.env` file in the root directory:
 ```env
 # The hostname where the dashboard will be served
 # If not provided, localhost is used
-DASHBOARD_HOST=dash.localhost
+DASHBOARD_HOST=localhost
 REDIS_URL=redis://localhost:6379/0
 ```
 
