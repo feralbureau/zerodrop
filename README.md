@@ -1,6 +1,3 @@
-Replace the contents of `README.md` in the root of the `feralbureau/zerodrop` repository with the following content. Do NOT create an `assets/` directory or banner/footer images — just reference them in the markdown so they can be added later.
-
-```markdown
 <div align="center">
 
 ![Banner](./assets/banner.png)
@@ -248,9 +245,3 @@ Distributed under the MIT License. See `LICENSE` for more information.
 ![Footer](./assets/footer.png)
 
 </div>
-```
-
-Notes for the agent:
-- Replace the entire contents of `README.md` at the repo root with the content above.
-- The `./assets/banner.png` and `./assets/footer.png` image references are intentional placeholders — do NOT create these files or remove the references. They match the style template the user provided.
-- Make sure the markdown renders correctly (no trailing whitespace issues, proper newlines between sections).
