@@ -13,6 +13,7 @@ from .core.config import settings
 from .core.redis import create_redis_client, close_redis_client
 from redis.asyncio.client import Redis
 from .services.uptime_service import run_uptime_loop
+from .services.anomaly_service import run_anomaly_loop
 from .api.routes import _apply_caddy_config, _get_api_key
 
 
@@ -49,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 	app.state.uptime_clients = set()
 	app.state.uptime_task = asyncio.create_task(run_uptime_loop(app))
+	app.state.anomaly_task = asyncio.create_task(run_anomaly_loop(app))
 
 	try:
 		yield
@@ -58,6 +60,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 			uptime_task.cancel()
 			with contextlib.suppress(Exception):
 				await uptime_task
+		anomaly_task = getattr(app.state, "anomaly_task", None)
+		if anomaly_task:
+			anomaly_task.cancel()
+			with contextlib.suppress(Exception):
+				await anomaly_task
 		await close_redis_client(app.state.redis)
 
 

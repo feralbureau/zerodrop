@@ -50,12 +50,14 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { ArrowUpRight, RefreshCw, Siren, Zap } from "lucide-react"
+import { ArrowUpRight, RefreshCw } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 
 import { useNow } from "@/hooks/use-now"
+import { useDomains } from "@/hooks/use-domains"
 import { useUptime } from "@/hooks/use-uptime"
 import { useWafLogs } from "@/hooks/use-waf-logs"
+import { useRpmAnomalies } from "@/hooks/use-rpm-anomalies"
 import { cn } from "@workspace/ui/lib/utils"
 
 const trafficConfig = {
@@ -72,12 +74,20 @@ const latencyConfig = {
   },
 } satisfies ChartConfig
 
+const rpmConfig = {
+  rpm: {
+    label: "RPM",
+    color: "var(--chart-3)",
+  },
+} satisfies ChartConfig
+
 const BUCKET_HOURS = 4
 const BUCKETS = 6
 
 export function Dashboard() {
   const { events, blacklist, lastRefresh, refresh } = useWafLogs()
   const { monitors } = useUptime()
+  const { domains } = useDomains()
   const [isRefreshing, setIsRefreshing] = useState(false)
   const now = useNow()
   const since = now - 24 * 60 * 60 * 1000
@@ -87,8 +97,12 @@ export function Dashboard() {
   const [pageSize, setPageSize] = useState(30)
   const [activeTab, setActiveTab] = useState<"traffic" | "latency" | "anomalies">("traffic")
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null)
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null)
+  const [anomalyTab, setAnomalyTab] = useState<"graph" | "anomalies">("graph")
   const listRef = useRef<HTMLDivElement | null>(null)
   const hasUptimeMonitors = monitors.length > 0
+  const hasDomains = domains.length > 0
+  const { series: rpmSeries, anomalies: rpmAnomalies } = useRpmAnomalies(selectedDomain)
 
   useEffect(() => {
     if (!hasUptimeMonitors) {
@@ -102,10 +116,27 @@ export function Dashboard() {
   }, [hasUptimeMonitors, monitors, selectedMonitorId])
 
   useEffect(() => {
+    if (!hasDomains) {
+      setSelectedDomain(null)
+      return
+    }
+    if (selectedDomain && domains.some((entry) => entry.domain === selectedDomain)) {
+      return
+    }
+    setSelectedDomain(domains[0]?.domain ?? null)
+  }, [domains, hasDomains, selectedDomain])
+
+  useEffect(() => {
     if (!hasUptimeMonitors && activeTab === "latency") {
       setActiveTab("traffic")
     }
   }, [activeTab, hasUptimeMonitors])
+
+  useEffect(() => {
+    if (!hasDomains && activeTab === "anomalies") {
+      setActiveTab("traffic")
+    }
+  }, [activeTab, hasDomains])
 
   const selectedMonitor = useMemo(
     () => monitors.find((monitor) => monitor.id === selectedMonitorId) ?? null,
@@ -122,6 +153,13 @@ export function Dashboard() {
       latency: value >= 0 ? value : null,
     }))
   }, [selectedMonitor])
+
+  const rpmData = useMemo(() => {
+    return rpmSeries.map((point) => ({
+      ts: point.ts * 1000,
+      rpm: point.rpm,
+    }))
+  }, [rpmSeries])
 
   const handleRefresh = async () => {
     if (isRefreshing) return
@@ -323,7 +361,24 @@ export function Dashboard() {
               ) : (
                 <TabsTrigger value="latency">Latency</TabsTrigger>
               )}
-              <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
+              {!hasDomains ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-not-allowed">
+                      <TabsTrigger
+                        value="anomalies"
+                        disabled
+                        className={cn("text-muted-foreground")}
+                      >
+                        Anomalies
+                      </TabsTrigger>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>Add a domain to unlock anomalies.</TooltipContent>
+                </Tooltip>
+              ) : (
+                <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
+              )}
             </TabsList>
             <TabsContent value="traffic" className="mt-4">
               <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
@@ -498,28 +553,126 @@ export function Dashboard() {
             </TabsContent>
             <TabsContent value="anomalies" className="mt-4">
               <Card>
-                <CardHeader>
-                  <CardTitle>Anomaly review</CardTitle>
-                  <CardDescription>Signals needing analyst validation</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3 rounded-lg border border-dashed bg-muted/30 p-4">
-                    <div className="flex size-10 items-center justify-center rounded-full bg-background">
-                      <Siren className="text-muted-foreground" />
+                <CardHeader className="gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-col gap-1">
+                      <CardTitle>Anomaly review</CardTitle>
+                      <CardDescription>Request spikes by domain</CardDescription>
                     </div>
-                    <div className="flex flex-1 flex-col gap-1">
-                      <span className="text-sm font-medium">
-                        No urgent anomalies detected
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Continue monitoring for suspicious spikes.
-                      </span>
-                    </div>
-                    <Button variant="outline" size="sm">
-                      <Zap data-icon="inline-start" />
-                      Run scan
-                    </Button>
+                    {selectedDomain ? (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            {selectedDomain}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {domains.map((entry) => (
+                            <DropdownMenuItem
+                              key={entry.domain}
+                              onClick={() => setSelectedDomain(entry.domain)}
+                            >
+                              {entry.domain}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    ) : null}
                   </div>
+                  <Tabs
+                    value={anomalyTab}
+                    onValueChange={(value) => setAnomalyTab(value as typeof anomalyTab)}
+                  >
+                    <TabsList variant="line">
+                      <TabsTrigger value="graph">Graph</TabsTrigger>
+                      <TabsTrigger value="anomalies">Anomalies</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </CardHeader>
+                <CardContent>
+                  <Tabs
+                    value={anomalyTab}
+                    onValueChange={(value) => setAnomalyTab(value as typeof anomalyTab)}
+                  >
+                    <TabsContent value="graph" className="mt-0">
+                      {selectedDomain && rpmData.length > 0 ? (
+                        <ChartContainer
+                          config={rpmConfig}
+                          className="h-[260px] w-full aspect-auto"
+                        >
+                          <AreaChart data={rpmData} margin={{ left: 12, right: 12 }}>
+                            <CartesianGrid vertical={false} />
+                            <XAxis
+                              dataKey="ts"
+                              tickLine={false}
+                              axisLine={false}
+                              tickMargin={8}
+                              tickFormatter={(value) =>
+                                value
+                                  ? new Date(value as number).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : ""
+                              }
+                            />
+                            <ChartTooltip
+                              cursor={false}
+                              content={<ChartTooltipContent indicator="line" />}
+                            />
+                            <Area
+                              dataKey="rpm"
+                              type="monotone"
+                              fill="var(--color-rpm)"
+                              fillOpacity={0.35}
+                              stroke="var(--color-rpm)"
+                              strokeWidth={2}
+                            />
+                          </AreaChart>
+                        </ChartContainer>
+                      ) : (
+                        <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                          {hasDomains
+                            ? "Waiting for RPM metrics"
+                            : "Add a domain to see anomaly data."}
+                        </div>
+                      )}
+                    </TabsContent>
+                    <TabsContent value="anomalies" className="mt-0">
+                      {selectedDomain && rpmAnomalies.length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Time</TableHead>
+                              <TableHead className="text-right">RPM</TableHead>
+                              <TableHead className="text-right">Baseline</TableHead>
+                              <TableHead className="text-right">Multiplier</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {[...rpmAnomalies]
+                              .sort((a, b) => b.ts - a.ts)
+                              .map((entry) => (
+                                <TableRow key={`${entry.ts}-${entry.rpm}`}>
+                                  <TableCell className="font-medium">
+                                    {new Date(entry.ts * 1000).toLocaleString()}
+                                  </TableCell>
+                                  <TableCell className="text-right">{entry.rpm}</TableCell>
+                                  <TableCell className="text-right">{entry.baseline}</TableCell>
+                                  <TableCell className="text-right">{entry.multiplier}x</TableCell>
+                                </TableRow>
+                              ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+                          {hasDomains
+                            ? "No anomalies detected yet"
+                            : "Add a domain to see anomaly data."}
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 </CardContent>
               </Card>
             </TabsContent>

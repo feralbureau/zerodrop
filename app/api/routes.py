@@ -3,6 +3,7 @@ from uuid import uuid4
 import os
 import json
 import logging
+import time
 import httpx
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -11,9 +12,9 @@ from redis.asyncio.client import Redis
 from starlette.responses import JSONResponse
 
 from ..core.security.auth import api_key_required
-from ..schemas.waf import WafCheckResponse
 from ..services.waf_service import WAF_LOG_STREAM, check_ip, get_waf_settings
 from ..services.uptime_service import list_monitors, _parse_success_codes, check_and_update
+from ..services.anomaly_service import record_request
 
 
 class AllowListItem(BaseModel):
@@ -202,8 +203,11 @@ async def _list_domains(redis: Redis) -> list[dict]:
 
 def _build_caddy_config(api_key: str | None, domains: list[dict]) -> str:
     dashboard_host = os.getenv("DASHBOARD_HOST", "").strip()
+    if dashboard_host and "://" in dashboard_host:
+        parsed_host = urlparse(dashboard_host)
+        dashboard_host = parsed_host.netloc or parsed_host.path
     if not dashboard_host:
-        raise ValueError("DASHBOARD_HOST must be set")
+        dashboard_host = "localhost"
 
     caddyfile = f"""{{
     admin 0.0.0.0:2019
@@ -421,24 +425,31 @@ async def delete_domain(request: Request, domain: str, _=Depends(api_key_require
 async def check_request(request: Request, _=Depends(api_key_required)) -> Response:
     ip = _extract_client_ip(request)
     redis: Redis = request.app.state.redis
+    headers = request.headers
+    forwarded_host = headers.get("x-forwarded-host") or headers.get("host")
     orig_uri = (
-        request.headers.get("x-original-uri")
-        or request.headers.get("x-forwarded-uri")
-        or request.headers.get("x-forwarded-url")
-        or request.headers.get("x-rewrite-url")
+        headers.get("x-original-uri")
+        or headers.get("x-forwarded-uri")
+        or headers.get("x-forwarded-url")
+        or headers.get("x-rewrite-url")
         or str(request.url)
     )
     parsed = urlparse(orig_uri)
     query_params = _parse_query_params(parsed.query)
+    domain = (forwarded_host or parsed.netloc or parsed.path).split(":")[0].strip()
 
     try:
+        try:
+            await record_request(redis, domain)
+        except Exception:
+            pass
         body = await request.body()
         allowed, reason = await check_ip(
             redis,
             ip,
             path=parsed.path,
-            method=request.headers.get("x-original-method") or request.headers.get("x-forwarded-method") or request.method,
-            headers=request.headers,
+            method=headers.get("x-original-method") or headers.get("x-forwarded-method") or request.method,
+            headers=headers,
             query_params=query_params,
             body=body,
         )
@@ -528,6 +539,48 @@ async def list_logs(request: Request, limit: int = 200, action: str | None = Non
                     break
             next_max = f"({_decode_value(entries[-1][0])}"
         return JSONResponse({"logs": logs})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/rpm")
+async def get_rpm(request: Request, domain: str, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    now = int(time.time())
+    since = now - 24 * 60 * 60
+    key = f"rpm:series:{domain}"
+    try:
+        items = await redis.zrangebyscore(key, since, now)
+        series = []
+        for raw in items:
+            try:
+                payload = json.loads(_decode_value(raw))
+                if isinstance(payload, dict) and "ts" in payload and "rpm" in payload:
+                    series.append({"ts": int(payload["ts"]), "rpm": int(payload["rpm"])})
+            except Exception:
+                continue
+        return JSONResponse({"domain": domain, "series": series})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/anomalies")
+async def get_anomalies(request: Request, domain: str, _=Depends(api_key_required)) -> JSONResponse:
+    redis: Redis = request.app.state.redis
+    now = int(time.time())
+    since = now - 24 * 60 * 60
+    key = f"rpm:anomalies:{domain}"
+    try:
+        items = await redis.zrangebyscore(key, since, now)
+        anomalies = []
+        for raw in items:
+            try:
+                payload = json.loads(_decode_value(raw))
+                if isinstance(payload, dict):
+                    anomalies.append(payload)
+            except Exception:
+                continue
+        return JSONResponse({"domain": domain, "anomalies": anomalies})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
