@@ -83,7 +83,7 @@ _SKIP_HEADER_NAMES = {
     "connection",
     "pragma",
     "cache-control",
-    "cdn-loop",
+    "cdn-loop", # cloudflare shit
 }
 
 SETTINGS_KEY = "waf:settings"
@@ -136,7 +136,7 @@ async def _log_event(redis: Redis, ip: str, action: str, reason: str, **extra: s
     except Exception:
         # never raise logging failures
         try:
-            # best effort fallback: write a warning to stdout so operator sees it
+            # best effort fallback write a warning to stdout so operator sees it
             print(f"[waf_log_error] failed to xadd event for {ip} reason={reason} extra={extra}")
         except Exception:
             pass
@@ -262,6 +262,8 @@ async def check_ip(
                 await _log_event(redis, ip, action="block", reason="denylist_ua", ua=ua)
                 return False, "denylist_ua"
             country = _extract_country(headers)
+            # ts is not working
+            # TODO: fix
             if country:
                 normalized = country.strip().upper()
                 if await redis.sismember("deny:country", normalized) or await redis.sismember(

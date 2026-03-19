@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ru" class="scroll-smooth">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZeroDrop * self-hosted Web Application Firewall</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="icon"
+        href="https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ffreesvg.org%2Fimg%2F1400625045.png&f=1&nofb=1&ipt=45b617d3ff47e13e763d26446072447ec88d309e573011cd4138dd6a3f582eb1">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#09090b',
+                        foreground: '#fafafa',
+                        muted: '#a1a1aa',
+                        border: '#27272a',
+                        hover: '#18181b',
+                        code: '#111111',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    borderRadius: {
+                        'md': '6px',
+                        'lg': '8px',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --bg: #09090b;
+            --fg: #fafafa;
+            --border: #27272a;
+            --muted: #a1a1aa;
+        }
+
+        body {
+            background-color: var(--bg) !important;
+            color: var(--fg) !important;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* nav specific fix to ensure visibility */
+        nav {
+            background-color: var(--bg);
+            border-bottom: 1px solid var(--border);
+        }
+
+        /* scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--muted);
+        }
+
+        /* anim */
+        .fade-in-section {
+            opacity: 0;
+            transition: opacity 0.4s ease-out;
+            will-change: opacity;
+        }
+
+        .fade-in-section.is-visible {
+            opacity: 1;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .fade-in-section {
+                opacity: 1;
+                transition: none;
+            }
+        }
+
+        /* tabs UI */
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* ensure links are always visible */
+        a {
+            color: inherit;
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body class="selection:bg-white selection:text-black min-h-screen flex flex-col">
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50">
+        <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
+            <a href="#" class="flex items-center gap-2 font-medium text-sm text-[#fafafa]">
+                <img src="https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ffreesvg.org%2Fimg%2F1400625045.png&f=1&nofb=1&ipt=45b617d3ff47e13e763d26446072447ec88d309e573011cd4138dd6a3f582eb1"
+                    alt="ZeroDrop Logo" class="w-6 h-6">
+                <span>ZeroDrop</span>
+            </a>
+            <div class="flex items-center gap-6 text-sm">
+                <a href="#features" class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors">Features</a>
+                <a href="#providers" class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors">Providers</a>
+                <a href="https://deepwiki.com/feralbureau/zerodrop" target="_blank" rel="noopener noreferrer"
+                    class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors">Docs</a>
+                <a href="https://github.com/feralbureau/zerodrop" target="_blank" rel="noopener noreferrer"
+                    class="text-[#fafafa] flex items-center gap-1 hover:opacity-70 transition-opacity">
+                    GitHub
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14" />
+                        <path d="m12 5 7 7-7 7" />
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1 w-full max-w-6xl mx-auto px-6 pt-32 pb-24">
+
+        <!-- Hero Section -->
+        <section class="flex flex-col items-center text-center fade-in-section py-20">
+            <span class="text-[#a1a1aa] text-sm mb-6 font-mono">Open-source WAF based on Caddy</span>
+            <h1 class="text-5xl md:text-7xl font-semibold tracking-tight text-[#fafafa] mb-6 max-w-4xl">
+                Your self-hosted web application firewall.
+            </h1>
+            <p class="text-[#a1a1aa] text-lg max-w-2xl mb-10 leading-relaxed">
+                ZeroDrop is a self-hosted Web Application Firewall that sits in front of your applications and filters malicious traffic in real-time. 
+                Gives you a clean dashboard to manage blacklists, allowlists, denylists, rate limits, and uptime monitors
+            </p>
+
+            <div class="flex flex-col sm:flex-row items-center gap-4 mb-16">
+                <a href="#quickstart"
+                    class="h-10 px-6 rounded-md bg-[#fafafa] text-[#09090b] font-medium text-sm flex items-center justify-center hover:bg-[#e4e4e7] transition-colors w-full sm:w-auto">
+                    Get Started
+                </a>
+                <a href="https://deepwiki.com/feralbureau/zerodrop" target="_blank" rel="noopener noreferrer"
+                    class="h-10 px-6 rounded-md bg-transparent border border-[#27272a] text-[#fafafa] font-medium text-sm flex items-center justify-center hover:bg-[#18181b] transition-colors w-full sm:w-auto">
+                    Documentation
+                </a>
+            </div>
+
+            <!-- Install Block -->
+            <div
+                class="w-fit max-w-full bg-[#111] border border-[#27272a] rounded-md p-3 flex items-center gap-3 group">
+                <div class="flex items-center gap-3 text-sm font-mono">
+                    <span class="text-[#a1a1aa] select-none">$</span>
+                    <code
+                        class="text-[#fafafa] whitespace-nowrap">git clone https://github.com/feralbureau/zerodr...</code>
+                </div>
+                <button id="copy-btn" class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors p-1 shrink-0"
+                    aria-label="Copy code">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
+                </button>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features" class="fade-in-section py-24 border-t border-[#27272a]">
+            <h2 class="text-2xl font-semibold tracking-tight text-[#fafafa] mb-8">Features</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+                <div class="border border-[#27272a] rounded-lg p-6 bg-transparent hover:bg-[#18181b] transition-colors">
+                    <svg class="mb-4 text-[#fafafa]" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M20 7h-9" />
+                        <path d="M14 17H5" />
+                        <circle cx="17" cy="17" r="3" />
+                        <circle cx="7" cy="7" r="3" />
+                    </svg>
+                    <h3 class="text-base font-medium text-[#fafafa] mb-2">Multi-Layer Request Filtering</h3>
+                    <p class="text-sm text-[#a1a1aa] leading-relaxed">Honeypot traps, bot detection, SQLi/XSS pattern matching, and query inspection, all in a single pipeline.</p>
+                </div>
+
+                <div class="border border-[#27272a] rounded-lg p-6 bg-transparent hover:bg-[#18181b] transition-colors">
+                    <svg class="mb-4 text-[#fafafa]" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="M2 12h4l3-9 5 18 3-9h5" />
+                    </svg>
+                    <h3 class="text-base font-medium text-[#fafafa] mb-2">Uptime Monitoring</h3>
+                    <p class="text-sm text-[#a1a1aa] leading-relaxed">Built-in HTTP and TCP health checks every 30 seconds with latency history and real-time broadcasts.</p>
+                </div>
+
+                <div class="border border-[#27272a] rounded-lg p-6 bg-transparent hover:bg-[#18181b] transition-colors">
+                    <svg class="mb-4 text-[#fafafa]" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <path d="m21 16-4 4-4-4" />
+                        <path d="M17 20V4" />
+                        <path d="m3 8 4-4 4 4" />
+                        <path d="M7 4v16" />
+                    </svg>
+                    <h3 class="text-base font-medium text-[#fafafa] mb-2">Dynamic Reverse Proxy</h3>
+                    <p class="text-sm text-[#a1a1aa] leading-relaxed">Caddy configuration is generated and hot-reloaded on the fly, add or remove protected domains without restarts.</p>
+                </div>
+
+                <div class="border border-[#27272a] rounded-lg p-6 bg-transparent hover:bg-[#18181b] transition-colors">
+                    <svg class="mb-4 text-[#fafafa]" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                        stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <path d="M12 6v6l4 2" />
+                    </svg>
+                    <h3 class="text-base font-medium text-[#fafafa] mb-2">Adaptive Rate Limiting</h3>
+                    <p class="text-sm text-[#a1a1aa] leading-relaxed">EWMA-based throttling that learns traffic patterns per IP, with spike detection for sudden bursts.</p>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Providers Table -->
+        <section id="providers" class="fade-in-section py-24 border-t border-[#27272a]">
+            <h2 class="text-2xl font-semibold tracking-tight text-[#fafafa] mb-8">WAF Rules &amp; Toggles</h2>
+            <div class="border border-[#27272a] rounded-md overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-[#09090b] text-[#a1a1aa] border-b border-[#27272a]">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Rule</th>
+                            <th class="px-4 py-3 font-medium">Key</th>
+                            <th class="px-4 py-3 font-medium">Default</th>
+                            <th class="px-4 py-3 font-medium">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-[#27272a]">
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Allowlist</td>
+                            <td class="px-4 py-3">allowlist_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Bypass checks for trusted IPs/UAs</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Honeypot</td>
+                            <td class="px-4 py-3">honeypot_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Permaban on sensitive path access</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Bot UA</td>
+                            <td class="px-4 py-3">bot_ua_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Block known bot user-agents</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Header Inspection</td>
+                            <td class="px-4 py-3">header_inspection_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Scan headers for SQLi/XSS</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Query Inspection</td>
+                            <td class="px-4 py-3">query_inspection_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Scan URL params for payloads</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Body Inspection</td>
+                            <td class="px-4 py-3">body_inspection_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Scan request body for injections</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Rate Limit</td>
+                            <td class="px-4 py-3">rate_limit_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Fixed-window rate limiting (100 req/60s)</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Adaptive Rate Limit</td>
+                            <td class="px-4 py-3">adaptive_rate_limit_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">EWMA-based dynamic thresholds</td>
+                        </tr>
+                        <tr class="hover:bg-[#18181b] transition-colors text-[#fafafa]">
+                            <td class="px-4 py-3 font-medium">Spike Detection</td>
+                            <td class="px-4 py-3">spike_rate_limit_enabled</td>
+                            <td class="px-4 py-3">On</td>
+                            <td class="px-4 py-3">Immediate block on 3x burst</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+<!-- Quick Start -->
+        <section id="quickstart" class="fade-in-section py-24 border-t border-[#27272a]">
+            <h2 class="text-2xl font-semibold tracking-tight text-[#fafafa] mb-8">Quick Start</h2>
+
+            <div class="border border-[#27272a] rounded-md bg-transparent overflow-hidden">
+                <div class="flex items-center border-b border-[#27272a] bg-[#09090b] px-4">
+                    <button
+                        class="tab-btn px-4 py-3 text-sm font-medium text-[#fafafa] border-b-2 border-[#fafafa] -mb-[1px]"
+                        data-target="tab-manual">Docker</button>
+                    <button
+                        class="tab-btn px-4 py-3 text-sm font-medium text-[#a1a1aa] hover:text-[#fafafa] transition-colors border-b-2 border-transparent -mb-[1px]"
+                        data-target="tab-docker">Manual</button>
+                </div>
+
+                <div class="relative group p-4 bg-[#111] text-sm font-mono text-[#a1a1aa] overflow-x-auto">
+                    <button id="copy-quickstart"
+                        class="absolute right-3 top-3 p-1 text-[#a1a1aa] hover:text-[#fafafa] opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Copy quickstart code">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                        </svg>
+                    </button>
+                    <div id="tab-manual" class="tab-content active">
+                        <pre><code><span class="text-gray-500"># Clone the repository</span>
+git clone https://github.com/feralbureau/zerodrop.git
+cd zerodrop
+
+<span class="text-gray-500"># Set your dashboard host</span>
+echo "DASHBOARD_HOST=localhost" > .env
+
+<span class="text-gray-500"># Start all services</span>
+docker compose up --build</code></pre>
+                    </div>
+
+                    <div id="tab-docker" class="tab-content">
+                        <pre><code><span class="text-gray-500"># Start Redis</span>
+redis-server
+
+<span class="text-gray-500"># Run the API server</span>
+uvicorn app.main:app --reload
+
+<span class="text-gray-500"># Run caddy</span>
+caddy run --config Caddyfile
+
+<span class="text-gray-500"># Build the dashboard</span>
+cd dashboard
+npm install
+npm run build
+
+<span class="text-gray-500"># After build, copy the dashboard bundle to the srv/ folder served by Caddy</span>
+cp -r dashboard/dist/* srv/
+</code></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-[#27272a] py-8 text-center mt-auto">
+        <div class="text-sm text-[#a1a1aa] flex items-center justify-center gap-4">
+            <span>ZeroDrop WAF</span>
+            <span>&middot;</span>
+            <a href="https://github.com/feralbureau/zerodrop/blob/main/LICENSE" class="hover:text-[#fafafa] transition-colors">MIT License</a>
+            <span>&middot;</span>
+            <a href="https://github.com/feralbureau/zerodrop" class="hover:text-[#fafafa] transition-colors">GitHub</a>
+        </div>
+    </footer>
+
+    <script>
+        // Intersection Observer
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('is-visible');
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.1 });
+
+        document.querySelectorAll('.fade-in-section').forEach(s => observer.observe(s));
+
+        // Tabs
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => {
+                    b.classList.remove('text-[#fafafa]', 'border-[#fafafa]');
+                    b.classList.add('text-[#a1a1aa]', 'border-transparent');
+                });
+                tabContents.forEach(c => c.classList.remove('active'));
+                btn.classList.remove('text-[#a1a1aa]', 'border-transparent');
+                btn.classList.add('text-[#fafafa]', 'border-[#fafafa]');
+                document.getElementById(btn.dataset.target).classList.add('active');
+            });
+        });
+
+        // Copy
+        const copyBtn = document.getElementById('copy-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                const dummy = document.createElement('textarea');
+                document.body.appendChild(dummy);
+                dummy.value = 'git clone https://github.com/feralbureau/zerodrop.git && cd zerodrop && docker compose up --build';
+                dummy.select();
+                document.execCommand('copy');
+                document.body.removeChild(dummy);
+
+                const original = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                setTimeout(() => copyBtn.innerHTML = original, 2000);
+            });
+        }
+
+        const copyQuickstart = document.getElementById('copy-quickstart');
+        if (copyQuickstart) {
+            copyQuickstart.addEventListener('click', () => {
+                const activeCode = document.querySelector('.tab-content.active code');
+                if (!activeCode) return;
+
+                const dummy = document.createElement('textarea');
+                document.body.appendChild(dummy);
+                dummy.value = activeCode.textContent.trim();
+                dummy.select();
+                document.execCommand('copy');
+                document.body.removeChild(dummy);
+
+                const original = copyQuickstart.innerHTML;
+                copyQuickstart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+                setTimeout(() => copyQuickstart.innerHTML = original, 2000);
+            });
+        }
+    </script>
+</body>
+
+</html>

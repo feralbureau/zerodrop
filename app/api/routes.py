@@ -1,3 +1,6 @@
+# api/routes.py - endpoints
+# TODO: tech debt as fuck, cut up in few folders + files later
+
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 import os
@@ -131,7 +134,7 @@ async def _get_profile(redis: Redis) -> dict:
     raw = await redis.get("profile:default")
     if not raw:
         return {
-            "nickname": "Hiro Kamori",
+            "nickname": "Yoshimi Murayama",
             "avatar_url": "",
         }
     try:
@@ -140,7 +143,7 @@ async def _get_profile(redis: Redis) -> dict:
         return json.loads(raw)
     except Exception:
         return {
-            "nickname": "Hiro Kamori",
+            "nickname": "Yoshimi Murayama",
             "avatar_url": "",
         }
 
@@ -841,3 +844,5 @@ async def list_denylist(request: Request, _=Depends(api_key_required)) -> JSONRe
         return JSONResponse({"deny": {"ua": ua, "country": country}})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+# 846 lines divide in few files if 1000+ lines

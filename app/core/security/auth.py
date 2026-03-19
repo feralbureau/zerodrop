@@ -1,6 +1,8 @@
 from typing import Optional
 from fastapi import Header, HTTPException, Request, status
 
+# should be safe but idk
+# openclaw will bypass it anyways shitcode
 async def api_key_required(request: Request, x_api_key: Optional[str] = Header(None)) -> None:
     """require a valid X-API-Key header after setup."""
 

@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 		await close_redis_client(app.state.redis)
 		raise
 
-	# Re-apply Caddy config on startup so existing domains are proxied after restarts.
+	# reaply after reload cuz caddy is retarded
 	try:
 		existing_key = await _get_api_key(app.state.redis)
 		await _apply_caddy_config(app.state.redis, existing_key)

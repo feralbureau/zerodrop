@@ -17,7 +17,7 @@ type UseProfileResult = {
 }
 
 const defaultProfile: Profile = {
-  nickname: "Hiro Kamori",
+  nickname: "Yoshimi Murayama",
   avatar_url: "",
 }
 
