@@ -27,6 +27,7 @@ Instead of configuring complex firewall rules by hand, ZeroDrop gives you a clea
 - **Adaptive Rate Limiting**: EWMA-based throttling that learns traffic patterns per IP, with spike detection for sudden bursts.
 - **Real-Time Dashboard**: React SPA with live WebSocket feeds for blocked events and uptime status.
 - **Uptime Monitoring**: Built-in HTTP and TCP health checks every 30 seconds with latency history and real-time broadcasts.
+- **Anomaly Detection**: Per-domain RPM tracking with spike detection (rolling 5‑minute baseline, 3× threshold).
 - **Dynamic Reverse Proxy**: Caddy configuration is generated and hot-reloaded on the fly — add or remove protected domains without restarts.
 - **Country & User-Agent Blocking**: Deny traffic by geo-IP country code or user-agent string via simple denylist management.
 - **One-Click Onboarding**: Guided setup flow that generates your API key, configures your first domain, and applies the Caddy config automatically.
@@ -58,12 +59,10 @@ Instead of configuring complex firewall rules by hand, ZeroDrop gives you a clea
 Create a `.env` file in the root directory:
 
 ```env
-# The hostname where the dashboard will be served (REQUIRED)
-# Use just the host — no scheme, no trailing slash
-DASHBOARD_HOST=dash.example.com
-
-# Optional: override the API base URL for the dashboard build
-VITE_API_BASE_URL=https://dash.example.com
+# The hostname where the dashboard will be served
+# If not provided, localhost is used
+DASHBOARD_HOST=dash.localhost
+REDIS_URL=redis://localhost:6379/0
 ```
 
 ### Running with Docker
@@ -89,15 +88,21 @@ Open `http://localhost` to access the dashboard. The onboarding flow will guide 
 redis-server
 
 # Run the API server
-REDIS_URL=redis://localhost:6379/0 uvicorn app.main:app --reload
+uvicorn app.main:app --reload
 
-# In another terminal, run the dashboard
+# Run caddy
+caddy run --config Caddyfile
+
+# Build the dashboard
 cd dashboard
 npm install
-npm run dev
+npm run build
+
+# After build, copy the dashboard bundle to the srv/ folder served by Caddy
+cp -r dashboard/dist/* srv/
 ```
 
-The API will be available at `localhost:8000` and the dashboard dev server at `localhost:5173`.
+The dashboard server will be available at `dash.localhost` (or your configured host).
 
 ## Architecture
 
@@ -133,7 +138,7 @@ sequenceDiagram
         Caddy->>Origin: "Proxy request"
         Origin-->>Client: "Response"
     else "Blocked"
-        WAF-->>Caddy: "403 Forbidden"
+        WAF-->>Caddy: "403 Forbidden (empty body)"
         Caddy-->>Client: "Connection aborted"
     end
 ```
@@ -183,6 +188,8 @@ Every security layer can be independently enabled or disabled from the dashboard
 | `GET/PUT` | `/api/settings` | API Key | Read/update WAF settings and profile |
 | `GET/POST/DELETE` | `/api/domains` | API Key | Manage protected domains |
 | `GET` | `/api/logs` | API Key | Fetch WAF event log |
+| `GET` | `/api/rpm` | API Key | RPM time series for a domain |
+| `GET` | `/api/anomalies` | API Key | RPM anomaly events for a domain |
 | `GET/POST` | `/api/blacklist` | API Key | List/add blacklisted IPs |
 | `POST` | `/api/unban` | API Key | Remove an IP from the blacklist |
 | `GET/POST` | `/api/allowlist` | API Key | List/add allowlist entries |
@@ -233,15 +240,11 @@ WebSocket connections authenticate the same way. The API key is generated during
 | `waf_logs` | Stream | Ordered event log |
 | `uptime:monitors` | Set | Monitor IDs |
 | `uptime:monitor:{id}` | Hash | Monitor config and history |
+| `rpm:count:{domain}:{minute}` | String | Raw per-minute counters (TTL) |
+| `rpm:series:{domain}` | ZSet | RPM series (24h) |
+| `rpm:anomalies:{domain}` | ZSet | RPM anomaly events (24h) |
+| `rpm:first_seen:{domain}` | String | First traffic seen timestamp |
 
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
-
----
-
-<div align="center">
-
-![Footer](./assets/footer.png)
-
-</div>
