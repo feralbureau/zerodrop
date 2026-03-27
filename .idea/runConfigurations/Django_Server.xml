@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Django Server" type="PythonConfigurationType" factoryName="Python">
+    <module name="zerodrop" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/manage.py" />
+    <option name="PARAMETERS" value="runserver 0.0.0.0:8000" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <option name="EMULATE_TERMINAL" value="true" />
+    <envs>
+      <env name="REDIS_URL" value="redis://localhost:6379/0" />
+      <env name="CADDY_ADMIN_URL" value="http://localhost:2019" />
+      <env name="DASHBOARD_HOST" value="localhost" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>

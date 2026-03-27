@@ -3,7 +3,7 @@ import { useCallback } from "react"
 import { useApiKey } from "@/hooks/use-api-key"
 
 export function useAuthedFetch() {
-  const { apiKey, setApiKey } = useApiKey()
+  const { apiKey } = useApiKey()
 
   return useCallback(
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -11,12 +11,8 @@ export function useAuthedFetch() {
       if (apiKey && !headers.has("X-API-Key")) {
         headers.set("X-API-Key", apiKey)
       }
-      const res = await fetch(input, { ...init, headers })
-      if (res.status === 401) {
-        setApiKey("")
-      }
-      return res
+      return fetch(input, { ...init, headers })
     },
-    [apiKey, setApiKey]
+    [apiKey]
   )
 }

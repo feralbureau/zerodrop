@@ -354,7 +354,7 @@ docker compose up --build</code></pre>
 redis-server
 
 <span class="text-gray-500"># Run the API server</span>
-uvicorn app.main:app --reload
+python manage.py runserver
 
 <span class="text-gray-500"># Run caddy</span>
 caddy run --config Caddyfile
