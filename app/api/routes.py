@@ -81,7 +81,7 @@ class DomainCreate(BaseModel):
 
 
 router = APIRouter()
-logger = logging.getLogger("waf.nginx")
+logger = logging.getLogger("waf.api")
 
 
 def _decode_value(value) -> str:
@@ -844,5 +844,3 @@ async def list_denylist(request: Request, _=Depends(api_key_required)) -> JSONRe
         return JSONResponse({"deny": {"ua": ua, "country": country}})
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-
-# 846 lines divide in few files if 1000+ lines

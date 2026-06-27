@@ -262,8 +262,8 @@ async def check_ip(
                 await _log_event(redis, ip, action="block", reason="denylist_ua", ua=ua)
                 return False, "denylist_ua"
             country = _extract_country(headers)
-            # ts is not working
-            # TODO: fix
+            # note: country detection depends on upstream proxy headers (e.g. CF-IPCountry, X-Country)
+            # without a reverse proxy sending these headers, country denylist will be a no-op
             if country:
                 normalized = country.strip().upper()
                 if await redis.sismember("deny:country", normalized) or await redis.sismember(

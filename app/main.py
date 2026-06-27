@@ -9,7 +9,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 
-from .core.config import settings
 from .core.redis import create_redis_client, close_redis_client
 from redis.asyncio.client import Redis
 from .services.uptime_service import run_uptime_loop
@@ -19,7 +18,7 @@ from .api.routes import _apply_caddy_config, _get_api_key
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-	"""Менеджер health циклу: створює кліент Redis при запуску i закриває при завершенні"""
+	"""Application lifespan: initialise Redis client on startup, tear down on shutdown."""
 
 	# configure basic logging so `waf` logger outputs to the uvicorn terminal
 	root_logger = logging.getLogger()
@@ -31,7 +30,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 	root_logger.setLevel(logging.INFO)
 	logging.getLogger("waf").setLevel(logging.INFO)
 
-	# optimized redis client and attach to app.state
+	# initialise Redis client and attach to app.state
 	app.state.redis: Redis = create_redis_client()
 
 	# validate connectivity early with a timeout
@@ -41,7 +40,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 		await close_redis_client(app.state.redis)
 		raise
 
-	# reaply after reload cuz caddy is retarded
+	# re-apply caddy config on restart since caddy state does not survive reloads
 	try:
 		existing_key = await _get_api_key(app.state.redis)
 		await _apply_caddy_config(app.state.redis, existing_key)
@@ -80,16 +79,15 @@ app.add_middleware(
 	allow_headers=["*"],
 )
 
-# підключаємо WAF маршрути
+# mount WAF routes under /api so Caddy can call /api/check
 from .api import routes as waf_routes
 
-# mount waf routes under /api so nginx can call /api/check
 app.include_router(waf_routes.router, prefix="/api", tags=["waf"])
 
 
 @app.get("/health")
 async def health() -> JSONResponse:
-	"""Эндпоінт перевірки стану, який виконує пiнг до Redis і повертає статус"""
+	"""Health check endpoint: pings Redis and returns status."""
 
 	redis: Redis = getattr(app.state, "redis", None)
 	if redis is None:
