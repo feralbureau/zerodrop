@@ -4,8 +4,6 @@ import time
 
 from redis.asyncio.client import Redis
 
-from redis.asyncio.client import Redis
-
 ANOMALY_INTERVAL = 60
 WINDOW_MINUTES = 5
 RETENTION_SECONDS = 24 * 60 * 60

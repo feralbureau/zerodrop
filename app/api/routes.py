@@ -1,5 +1,5 @@
 # api/routes.py - endpoints
-# TODO: tech debt as fuck, cut up in few folders + files later
+# TODO: split into multiple router modules
 
 from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
