@@ -91,15 +91,16 @@ redis-server
 uvicorn app.main:app --reload
 
 # Run caddy
-caddy run --config Caddyfile
+caddy run --config caddy/Caddyfile
 
 # Build the dashboard
 cd dashboard
 npm install
 npm run build
 
-# After build, copy the dashboard bundle to the srv/ folder served by Caddy
-cp -r dashboard/dist/* srv/
+# After build, create srv/ and copy the dashboard bundle served by Caddy
+mkdir -p ../srv
+cp -r dist/* ../srv/
 ```
 
 The dashboard server will be available at `dash.localhost` (or your configured host).

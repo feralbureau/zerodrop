@@ -28,3 +28,6 @@ Thumbs.db
 # Dashboard
 dashboard/node_modules/
 dashboard/dist/
+
+# Local dev build output
+srv/
