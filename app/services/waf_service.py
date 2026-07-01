@@ -356,9 +356,6 @@ async def check_ip(
             except Exception:
                 pass
 
-    # NOTE: header/query/body inspection already performed above
-
-
     if settings["rate_limit_enabled"]:
         key = f"rate:{ip}"
         count = await _incr_with_expire(redis, key, RATE_WINDOW)
