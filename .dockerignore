@@ -1,0 +1,43 @@
+# Version control
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dashboard
+dashboard/node_modules/
+dashboard/dist/
+
+# Build artifacts
+srv/
+
+# Environment
+.env
+
+# Agent skills
+.agents/
+
+# Docker files (avoid sending other Dockerfiles)
+caddy/Dockerfile
+dashboard/Dockerfile
+app/Dockerfile
