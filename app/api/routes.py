@@ -521,10 +521,12 @@ async def extend_ban(request: Request, ip: str, minutes: int, _=Depends(api_key_
 
 
 @router.get("/logs")
-async def list_logs(request: Request, limit: int = 200, action: str | None = None, _=Depends(api_key_required)) -> JSONResponse:
+async def list_logs(request: Request, limit: int = 200, action: str | None = None, ip: str | None = None, reason: str | None = None, _=Depends(api_key_required)) -> JSONResponse:
     redis: Redis = request.app.state.redis
     try:
         action_filter = action.lower() if action else None
+        ip_filter = ip.strip().lower() if ip else None
+        reason_filter = reason.strip().lower() if reason else None
         logs = []
         next_max = "+"
         target = None if limit <= 0 else limit
@@ -536,6 +538,10 @@ async def list_logs(request: Request, limit: int = 200, action: str | None = Non
                 entry_id_str = _decode_value(entry_id)
                 normalized = _normalize_stream_fields(fields)
                 if action_filter and normalized.get("action", "").lower() != action_filter:
+                    continue
+                if ip_filter and normalized.get("ip", "").lower() != ip_filter:
+                    continue
+                if reason_filter and reason_filter not in normalized.get("reason", "").lower():
                     continue
                 logs.append({"id": entry_id_str, "fields": normalized})
                 if target is not None and len(logs) >= target:
