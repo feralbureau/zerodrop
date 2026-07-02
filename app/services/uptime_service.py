@@ -92,18 +92,18 @@ async def list_monitors(redis: Redis) -> list[dict]:
         data = await redis.hgetall(key)
         if not data:
             continue
-        name = _decode(data.get(b"name") or data.get("name"))
-        url = _decode(data.get(b"url") or data.get("url"))
-        check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
-        success_codes = _decode(data.get(b"success_codes") or data.get("success_codes"))
-        history = _parse_history(_decode(data.get(b"history") or data.get("history")))
-        latency_history = _parse_latency_history(_decode(data.get(b"latency_history") or data.get("latency_history")))
+        name = _decode(data.get("name"))
+        url = _decode(data.get("url"))
+        check_type = _decode(data.get("check_type")) or "http"
+        success_codes = _decode(data.get("success_codes"))
+        history = _parse_history(_decode(data.get("history")))
+        latency_history = _parse_latency_history(_decode(data.get("latency_history")))
         checked_at_history = _parse_checked_at_history(
-            _decode(data.get(b"checked_at_history") or data.get("checked_at_history"))
+            _decode(data.get("checked_at_history"))
         )
-        last_status = _decode(data.get(b"last_status") or data.get("last_status"))
-        last_latency = _decode(data.get(b"last_latency") or data.get("last_latency"))
-        checked_at = _decode(data.get(b"checked_at") or data.get("checked_at"))
+        last_status = _decode(data.get("last_status"))
+        last_latency = _decode(data.get("last_latency"))
+        checked_at = _decode(data.get("checked_at"))
         items.append(
             {
                 "id": monitor_id,
@@ -161,9 +161,9 @@ async def check_and_update(redis: Redis, monitor_id: str, client: httpx.AsyncCli
     data = await redis.hgetall(key)
     if not data:
         return None
-    url = _decode(data.get(b"url") or data.get("url"))
-    check_type = _decode(data.get(b"check_type") or data.get("check_type")) or "http"
-    success_raw = _decode(data.get(b"success_codes") or data.get("success_codes"))
+    url = _decode(data.get("url"))
+    check_type = _decode(data.get("check_type")) or "http"
+    success_raw = _decode(data.get("success_codes"))
     if not url:
         return None
     status = 0
@@ -188,10 +188,10 @@ async def check_and_update(redis: Redis, monitor_id: str, client: httpx.AsyncCli
             success_codes = DEFAULT_CODES
         ok, latency_ms = await _check_http(client, normalized_url, success_codes)
         status = 1 if ok else 0
-    history = _parse_history(_decode(data.get(b"history") or data.get("history")))
-    latency_history = _parse_latency_history(_decode(data.get(b"latency_history") or data.get("latency_history")))
+    history = _parse_history(_decode(data.get("history")))
+    latency_history = _parse_latency_history(_decode(data.get("latency_history")))
     checked_at_history = _parse_checked_at_history(
-        _decode(data.get(b"checked_at_history") or data.get("checked_at_history"))
+        _decode(data.get("checked_at_history"))
     )
     history.append(status)
     history = history[-HISTORY_LIMIT:]
